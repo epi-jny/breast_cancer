@@ -1,0 +1,38 @@
+services:
+  code-server:
+    build:
+      context: .
+      dockerfile: docker/code-server/Dockerfile
+    image: gmic-code-server:latest
+    container_name: gmic-code-server
+    restart: unless-stopped
+    # Mémoire partagée pour PyTorch DataLoader (défaut Docker = 64 Mo, trop peu)
+    shm_size: "8gb"
+    ports:
+      - "${CODE_SERVER_PORT:-8080}:8080"
+    environment:
+      PASSWORD: ${CODE_SERVER_PASSWORD:?CODE_SERVER_PASSWORD must be set in .env}
+    volumes:
+      - .:/workspace
+      - code-server-config:/root/.local/share/code-server
+      - code-server-extensions:/root/.local/share/code-server/extensions
+      - claude-config:/root/.claude
+      - claude-bin:/root/.local/share/claude
+      - ssh-keys:/root/.ssh
+      - gh-config:/root/.config/gh
+    # GPU (Quadro P1000) — nvidia-container-toolkit doit être installé sur l'hôte
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  code-server-config:
+  code-server-extensions:
+  claude-config:        # /root/.claude — credentials, plans, file-history Claude Code
+  claude-bin:           # /root/.local/share/claude — binaire installé (survit aux rebuilds)
+  ssh-keys:             # /root/.ssh — clés SSH GitHub
+  gh-config:            # /root/.config/gh — auth GitHub CLI

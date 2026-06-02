@@ -22,7 +22,7 @@
 ```mermaid
 flowchart LR
     A([Images DICOM/PNG]) --> B[Preprocess<br/>crop + resize 2944×1920]
-    B --> C[(preprocess_image/<br/>cropped_images/)]
+    B --> C[(data/preprocess_image/<br/>cropped_images/)]
 
     C --> D{Choix du modèle}
     D -->|GMIC NYU| E[Inférence 5 modèles<br/>flip + mean/std]
@@ -44,8 +44,8 @@ flowchart LR
 | `scripts/run_gmic_pipeline.py` | Wrapper preprocess + inférence GMIC |
 | `fine_tuning/train_resnet.py` | Entraînement ResNet18 sur label `cancer` |
 | `fine_tuning/train_resnet_normalite.py` | Entraînement ResNet18 sur label « normalité » (cancer ∨ biopsy ∨ difficult) |
-| `script_notebook/rsna_comparison.qmd` | Compare ResNet18 vs GMIC (ROC + visualisations) |
-| `script_notebook/gmic.qmd` | Décortique l'architecture GMIC (BasicBlock → Local/Global → fusion) |
+| `docs/script_notebook/rsna_comparison.qmd` | Compare ResNet18 vs GMIC (ROC + visualisations) |
+| `docs/script_notebook/gmic.qmd` | Décortique l'architecture GMIC (BasicBlock → Local/Global → fusion) |
 
 ---
 
@@ -53,32 +53,92 @@ flowchart LR
 
 ### Prérequis système
 
-- **Conda** ([Miniconda](https://docs.conda.io/en/latest/miniconda.html) recommandé)
+- **[uv](https://docs.astral.sh/uv/)** — gestionnaire Python utilisé par le projet
+- **Python 3.11+** (uv peut l'installer automatiquement)
 - **GPU NVIDIA** (sm_61+) — projet testé sur Quadro P1000 avec torch 2.4.1+cu121
-- **[Quarto](https://quarto.org/docs/get-started/)** pour rendre les notebooks
+- **[Quarto ≥ 1.5](https://quarto.org/docs/get-started/)** pour rendre les notebooks
 - **Poids GMIC** (`sample_model_1.p` à `sample_model_5.p`) à placer dans `GMIC/models/`
   ([instructions de téléchargement](https://github.com/nyukat/GMIC#how-to-run-the-code))
 
-### Installation
+### Installation locale
 
 ```bash
 # Cloner le repo
 git clone https://github.com/joshdeutc/projet_cancer_sein.git
 cd projet_cancer_sein
 
-# Créer l'environnement conda (env "gmic", Python 3.11 + PyTorch GPU)
-make build
-
-# Activer l'environnement
-conda activate gmic
+# Installer les dépendances (crée .venv automatiquement)
+uv sync
 
 # Vérifier l'install
-python -c "import torch; print('CUDA:', torch.cuda.is_available(), '|', torch.__version__)"
+uv run python -c "import torch; print('CUDA:', torch.cuda.is_available(), '|', torch.__version__)"
 ```
 
-> Le submodule `modules/make-recipes/` (recettes Epiconcept partagées) nécessite un accès
-> à `Epiconcept-Paris/data-make-recipes` (privé). Sans cet accès, ignorer
-> `git submodule update --init --recursive` — le projet fonctionne sans.
+### Docker : image autonome (sans repo)
+
+Une image **self-contained** embarque tout (code + poids NYU + 8 mammographies
+**brutes** non préprocessées). Pas besoin de cloner le repo ni de fournir de
+données : on build, on `run`, et le **pipeline complet** s'exécute sur les images
+embarquées — preprocessing (crop + resize 2944×1920) **puis** inférence GMIC.
+
+```bash
+# Build CPU (portable, ~2 Go — tourne sur n'importe quel PC)
+make docker-build            # ou : docker build -f docker/inference/Dockerfile -t gmic-inference:cpu .
+
+# Lancer la démo (preprocess + inférence des 8 images → predictions.csv affiché)
+make docker-run              # ou : docker run --rm gmic-inference:cpu
+```
+
+Variante **GPU NVIDIA** (CUDA 12.1, ~6 Go, nécessite
+[nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)) :
+
+```bash
+make docker-build-gpu        # build --build-arg TORCH_VARIANT=cu121
+make docker-run-gpu          # docker run --rm --gpus all gmic-inference:gpu
+```
+
+Usages avancés (tout reste sans repo monté) :
+
+```bash
+# Choisir un autre modèle de l'ensemble NYU (1..5)
+docker run --rm -e MODEL_INDEX=3 gmic-inference:cpu
+
+# Shell interactif dans l'image
+docker run --rm -it gmic-inference:cpu bash
+
+# Préprocesser + inférer SES PROPRES images brutes (DICOM/PNG + train.csv)
+docker run --rm -e INPUT_DIR=/data -v /chemin/mes_images_brutes:/data gmic-inference:cpu
+# (ou en deux temps via une commande explicite :
+#  docker run --rm -v /chemin:/data gmic-inference:cpu \
+#      python scripts/preprocess.py --input-dir /data --output-dir /out)
+```
+
+> Le détail du build (build-args, ce qui est embarqué) est dans
+> [`docker/inference/Dockerfile`](docker/inference/Dockerfile).
+
+### Alternative : VS Code dans le navigateur (code-server via Docker)
+
+Le projet fournit un environnement de dev complet (Python 3.11 + uv + extensions
+Python/Jupyter/Ruff) accessible depuis n'importe quel navigateur, isolé dans Docker.
+
+```bash
+# 1. Configurer le mot de passe
+cp .env.code-server.example .env.code-server
+$EDITOR .env.code-server   # définir CODE_SERVER_PASSWORD
+
+# 2. Build + run
+docker compose --env-file .env.code-server up -d --build
+
+# 3. Ouvrir http://localhost:8080 (mot de passe = CODE_SERVER_PASSWORD)
+
+# 4. Dans le terminal intégré de VS Code, installer les dépendances Python
+uv sync
+```
+
+- Le repo est monté en volume sur `/workspace` (les modifications sont persistées sur l'hôte)
+- Config et extensions de code-server sont dans des volumes Docker nommés
+- Pour activer le GPU NVIDIA : décommenter la section `deploy.resources` de `docker-compose.yml`
+  (nécessite [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/))
 
 ---
 
@@ -87,17 +147,16 @@ python -c "import torch; print('CUDA:', torch.cuda.is_available(), '|', torch.__
 ### 1. Inférence GMIC sur des images de démo
 
 ```bash
-conda activate gmic
-python -m scripts.run_gmic_pipeline \
-    --input data/sample \
-    --output preprocess_image/sample
-# → preprocess_image/sample/predictions.csv
+uv run python -m scripts.run_gmic_pipeline \
+    --input data/raw/sample \
+    --output data/preprocess_image/sample
+# → data/preprocess_image/sample/predictions.csv
 ```
 
 ### 2. Entraînement ResNet18 (cible « normalité »)
 
 ```bash
-python -m fine_tuning.train_resnet_normalite
+uv run python -m fine_tuning.train_resnet_normalite
 # → fine_tuning/checkpoints/runs/{timestamp}_normalite_scratch/
 #    ├── best.pt        (state_dict + val_preds + val_targets + val_auc + epoch)
 #    ├── args.json      (hyperparams)
@@ -108,8 +167,8 @@ python -m fine_tuning.train_resnet_normalite
 ### 3. Render d'un notebook Quarto
 
 ```bash
-# Notebooks disponibles : gmic, resnet18_training, rsna_comparison
-make notebook NOTEBOOK=rsna_comparison           # → HTML dans script_notebook/
+# Notebooks disponibles : gmic, resnet18_training, rsna_comparison, preprocess_gmic
+make notebook NOTEBOOK=rsna_comparison           # → HTML dans docs/script_notebook/
 make run NOTEBOOK=rsna_comparison                # live preview dans le navigateur
 ```
 
@@ -119,27 +178,32 @@ make run NOTEBOOK=rsna_comparison                # live preview dans le navigate
 
 ```
 .
-├── Makefile                       # 6 cibles : build, run, notebook, test, freeze, help
-├── environment.yml                # env conda "gmic" (Python 3.11 + PyTorch CUDA)
-├── requirements.txt               # alternative pip (sans GPU garanti)
-├── pyproject.toml                 # metadata projet
+├── Makefile                       # cibles : sync, run, notebook, test, help
+├── pyproject.toml                 # dépendances Python (géré par uv)
+├── uv.lock                        # lock file uv (versions exactes)
+├── docker-compose.yml             # service code-server
+├── docker/code-server/Dockerfile  # image VS Code dans le navigateur
+├── docker/inference/Dockerfile    # image autonome d'inférence GMIC (code+poids+sample)
 ├── logo.svg
 ├── GMIC/                          # code original NYU + poids dans GMIC/models/
-├── scripts/                       # pipeline de preprocessing + inférence GMIC
+├── scripts/                       # pipeline preprocessing + inférence + tests
+│   ├── preprocess.py
+│   ├── validate_input.py
+│   └── test_validate_input.py
 ├── fine_tuning/                   # entraînement ResNet18 (cancer + normalité)
 │   ├── train_resnet.py
 │   ├── train_resnet_normalite.py
 │   ├── dataset.py
 │   ├── config.py
-│   └── checkpoints/runs/          # checkpoints horodatés (gitignored)
-├── script_notebook/               # notebooks Quarto (.qmd)
-│   ├── gmic.qmd                   # explique l'architecture GMIC
-│   ├── resnet18_training.qmd      # courbes d'entraînement ResNet18
-│   └── rsna_comparison.qmd        # compare ResNet18 vs GMIC sur le val set
-├── tests/                         # pytest sur le validateur d'entrée
-├── docs/                          # rendus PDF/HTML de référence
-├── data/                          # gitignored sauf data/sample/
-└── preprocess_image/              # sorties du preprocessing (gitignored)
+│   └── checkpoints/               # checkpoints horodatés (gitignored)
+├── abstention_module/             # MC Dropout + SGP pour quantifier l'incertitude
+├── analyse_exploratoire/          # exploration des données
+├── docs/                          # documentation
+│   ├── script_notebook/           # notebooks Quarto (.qmd) rendus en HTML
+│   └── troubleshooting.md
+└── data/                          # gitignored
+    ├── raw/                       # images brutes (RSNA, extract_dataset3, sample, cifar10)
+    └── preprocess_image/          # sorties du pipeline (cropped_images, data.pkl, ...)
 ```
 
 ---
@@ -148,7 +212,6 @@ make run NOTEBOOK=rsna_comparison                # live preview dans le navigate
 
 - **GMIC** — [Shen et al., An interpretable classifier for high-resolution breast cancer screening images, 2020](https://arxiv.org/abs/2002.07613) ([code NYU](https://github.com/nyukat/GMIC))
 - **RSNA** — [RSNA Screening Mammography Breast Cancer Detection (Kaggle)](https://www.kaggle.com/competitions/rsna-breast-cancer-detection)
-- **Setup Kaggle CLI** — [docs/kaggle_setup.md](docs/kaggle_setup.md)
 - **Troubleshooting** — [docs/troubleshooting.md](docs/troubleshooting.md)
 - **Notebooks rendus** — voir [docs/](docs/) pour les PDF de référence
 

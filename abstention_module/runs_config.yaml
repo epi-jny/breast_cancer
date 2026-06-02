@@ -1,0 +1,40 @@
+# Checkpoints à évaluer en abstention.
+#
+# Chaque ligne = un chemin vers un `best.pt`. Tout le reste (dataset, target,
+# in_channels, stats, nom du run d'inférence) est auto-détecté :
+#   - dataset/target : lus dans `args.json` voisin (`target`, `dataset_name`)
+#   - in_channels    : lu dans conv1.weight du state_dict
+#   - run name       : <target>__<model_tag>__<timestamp>
+#                      ex: normalite__smallcnn-focal__20260519-093143
+#                      ex: cifar_airplane_vs_all__smallcnn__20260522-100539
+#
+# Le chemin suit toujours le schéma :
+#   fine_tuning/checkpoints/runs/<target>/<model_tag>/<timestamp>/best.pt
+#
+# Pour désactiver une ligne sans la supprimer : commente-la avec `#`.
+
+checkpoints:
+  # ─── RSNA mammographies — cible "normalité" ──────────────────────────────
+  # # Historique : BCE + WeightedRandomSampler (SR donne une courbe monotone)
+  # - fine_tuning/checkpoints/runs/normalite/smallcnn/20260427-162128/best.pt
+  # # BCE pos_weight (pas de sampler) — SR pathologique, accuracy↓ à κ haut
+  # - fine_tuning/checkpoints/runs/normalite/smallcnn-bce-pos-weight/20260519-143232/best.pt
+  # # Focal loss seul (pas de sampler) — AUC bloqué à 0.65
+  # - fine_tuning/checkpoints/runs/normalite/smallcnn-focal/20260519-093201/best.pt
+  # Focal loss + WeightedRandomSampler — test mai 2026 (en cours)
+  # - fine_tuning/checkpoints/runs/normalite/smallcnn-focal-balanced/20260522-112827/best.pt
+
+  # ─── CIFAR-10 binaire — sanity-check de la chaîne SGP ────────────────────
+  # Airplane vs all (10/90), AUC val 0.97 — devrait donner une courbe SGP "happy path"
+  # - fine_tuning/checkpoints/runs/cifar_airplane_vs_all/smallcnn-bce-pos-weight/20260522-100539/best.pt
+
+  # ─── RSNA density (multi-classe A/B/C/D, 1-vs-all) ────────────────────────
+  # ResNet18 pretrained, 4 classes. Pour 1-vs-all : positive_class ∈ {0,1,2,3} (=A,B,C,D)
+  # Classe 3 = D (extremely dense) — la plus pertinente cliniquement (cancers masqués)
+  # - path: fine_tuning/checkpoints/runs/density/resnet18_pretrained/20260429-134215/best.pt
+  #   positive_class: 3
+  # Autres classes : décommente pour produire des runs séparés
+  # - path: fine_tuning/checkpoints/runs/density/resnet18_pretrained/20260429-134215/best.pt
+  #   positive_class: 0   # A (fatty)
+  - path: fine_tuning/checkpoints/runs/density/resnet18_pretrained/20260429-134215/best.pt
+    positive_class: 2   # C (heterogeneously dense)

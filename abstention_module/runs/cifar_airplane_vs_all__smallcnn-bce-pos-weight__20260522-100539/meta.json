@@ -1,0 +1,119 @@
+{
+  "name": "cifar_airplane_vs_all__smallcnn-bce-pos-weight__20260522-100539",
+  "target": "cifar_airplane_vs_all",
+  "dataset_name": "CIFAR-10 (torchvision)",
+  "dataset_kind": "cifar",
+  "model_tag": "smallcnn-bce-pos-weight",
+  "training_timestamp": "20260522-100539",
+  "abstention_diagnostic": {
+    "usable_for_abstention": true,
+    "pathology_flags": [],
+    "pred_positive_rate_global": 0.1695,
+    "kappa_spread": 0.5,
+    "accuracy_top10pct_kappa": 0.999,
+    "accuracy_bot10pct_kappa": 0.601
+  },
+  "kappa_min": 0.500045,
+  "kappa_max": 1.0,
+  "inference": {
+    "timestamp": "2026-05-25 11:00:23",
+    "duration_s": 6.3,
+    "device": "cuda",
+    "batch_size": 64,
+    "in_channels": 3,
+    "dataset_kind": "cifar",
+    "image_dir": "data/cifar10 (torchvision CIFAR-10 test set)",
+    "stats_mean": [
+      0.4914,
+      0.4822,
+      0.4465
+    ],
+    "stats_std": [
+      0.247,
+      0.2435,
+      0.2616
+    ],
+    "stats_choice": "cifar_native_rgb",
+    "img_size": 96,
+    "positive_class": 0,
+    "positive_class_name": "airplane"
+  },
+  "checkpoint": {
+    "path": "fine_tuning/checkpoints/runs/cifar_airplane_vs_all/smallcnn-bce-pos-weight/20260522-100539/best.pt",
+    "best_auc": 0.9712,
+    "best_epoch": 18,
+    "loss": "BCEWithLogitsLoss(pos_weight=9.000)",
+    "sampler": "shuffle natif (pas de WeightedRandomSampler)"
+  },
+  "training_args": {
+    "target": "cifar_airplane_vs_all",
+    "positive_class": 0,
+    "positive_class_name": "airplane",
+    "model_arch": "SmallCNN (RGB, 2 conv blocks + AdaptiveAvgPool(8,8) + FC)",
+    "head_desc": "Linear(64*8*8, 128) → ReLU → Dropout(p=0.3) → Linear(128, 1)",
+    "pretrained": false,
+    "n_parameters": 544129,
+    "dataset_name": "CIFAR-10 (torchvision)",
+    "image_dir": "data/cifar10",
+    "random_seed": 42,
+    "n_train": 50000,
+    "n_val": 10000,
+    "n_positive_train": 5000,
+    "n_positive_val": 1000,
+    "aggregation": "1 image = 1 échantillon, label binaire one-vs-all",
+    "epochs": 20,
+    "batch_size": 128,
+    "lr": 0.001,
+    "weight_decay": 1e-05,
+    "img_size": 96,
+    "device": "cuda",
+    "warmup_epochs": 2,
+    "patience": 6,
+    "augmentation": "Resize → RandomCrop(pad=img_size/8) → HFlip",
+    "loss": "BCEWithLogitsLoss(pos_weight=9.000)",
+    "sampler": "shuffle natif (pas de WeightedRandomSampler)",
+    "num_workers": 4,
+    "git_commit": "6f153c8-dirty",
+    "started_at": "2026-05-22 10:05:39",
+    "ended_at": "2026-05-22 10:33:20",
+    "total_time_s": 1660.2,
+    "total_time_human": "27 min 40 s",
+    "epochs_ran": 20,
+    "early_stopped": false,
+    "best_auc": 0.9712,
+    "best_epoch": 18
+  },
+  "dataset": {
+    "n_total": 10000,
+    "split_sizes": {
+      "cal": 7500,
+      "test": 2500
+    }
+  },
+  "baselines": {
+    "cal": {
+      "n": 7500,
+      "positives": 750,
+      "base_rate": 0.1,
+      "accuracy_at_0.5": 0.9133,
+      "pred_positive_rate": 0.1701,
+      "p_mean": 0.2027,
+      "p_std": 0.3122,
+      "kappa_mean": 0.9116,
+      "kappa_min": 0.5,
+      "kappa_max": 1.0
+    },
+    "test": {
+      "n": 2500,
+      "positives": 250,
+      "base_rate": 0.1,
+      "accuracy_at_0.5": 0.9124,
+      "pred_positive_rate": 0.1676,
+      "p_mean": 0.2021,
+      "p_std": 0.3105,
+      "kappa_mean": 0.9093,
+      "kappa_min": 0.5002,
+      "kappa_max": 1.0
+    }
+  }
+}

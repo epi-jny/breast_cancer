@@ -1,26 +1,11 @@
 # ─── Données et sorties (volumineux, ne pas versionner) ─────────────────────
-data/*
+data/
 !data/.gitkeep
-!data/sample/
-!data/test_images/
-preprocess_image/*
-!preprocess_image/.gitkeep
-extract_dataset*/
-rsna_images/
-rsna_output/
-gmic_output/
-cancer_test_output/
-RSNA/
-Test_model_with_cancer/
 
 # PKL orphelins à la racine
 *.pkl
 
-# ─── Fichiers générés par Quarto (rapports de référence dans docs/) ─────────
-script_notebook/*.html
-script_notebook/*.pdf
-script_notebook/*.ipynb
-script_notebook/*_files/
+# ─── Fichiers générés par Quarto ────────────────────────────────────────────
 README.html
 README_files/
 
@@ -42,13 +27,13 @@ build/
 # ─── Environnements ─────────────────────────────────────────────────────────
 .env
 .env.local
+.env.code-server
 .paths.mk
 .paths.local.mk
 .venv/
 venv/
 *.kaggle/
 .claude/
-uv.lock
 environment.lock.yml
 
 # ─── IDE / OS ───────────────────────────────────────────────────────────────

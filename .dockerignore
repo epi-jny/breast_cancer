@@ -1,0 +1,27 @@
+# Données et checkpoints — jamais dans le build context
+data/
+fine_tuning/checkpoints/
+
+# GMIC : poids et samples lourds (le code source reste accessible)
+GMIC/models/
+GMIC/sample_data/
+GMIC/sample_output/
+
+# Environnements et caches
+.venv/
+.git/
+.pytest_cache/
+.vscode/
+.claude/
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# Secrets
+.env
+.env.code-server
+
+# Artefacts Quarto
+*.html
+*_files/

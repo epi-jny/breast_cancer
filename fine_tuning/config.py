@@ -15,7 +15,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUN_NAME = "rsna_output"
 
 # Dossier du run — produit par preprocess.py + inference.py
-RUN_DIR = os.path.join(PROJECT_ROOT, "preprocess_image", RUN_NAME)
+RUN_DIR = os.path.join(PROJECT_ROOT, "data", "preprocess_image", RUN_NAME)
 
 # data.pkl : liste des exams avec leurs labels et chemins d'images
 EXAM_LIST_PATH = os.path.join(RUN_DIR, "data.pkl")

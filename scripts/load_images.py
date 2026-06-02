@@ -5,8 +5,8 @@ Accepte un fichier unique ou un dossier (récursif).
 
 Usage CLI :
     python scripts/load_images.py image.png
-    python scripts/load_images.py preprocess_image/demo/cropped_images/
-    python scripts/load_images.py preprocess_image/demo/cropped_images/ --max 10
+    python scripts/load_images.py data/preprocess_image/sample/cropped_images/
+    python scripts/load_images.py data/preprocess_image/sample/cropped_images/ --max 10
 
 Fonctions importables :
     from scripts.load_images import collect_images, load_image, load_all

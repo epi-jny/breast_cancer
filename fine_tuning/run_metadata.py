@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+import torch
+
 # ─── Catalogue des cibles ────────────────────────────────────────────────────
 # On décrit chaque target une fois ici ; les scripts train y pointent via
 # la clé (`"cancer_malignant"`, `"normalite"`, …). Ajouter une nouvelle cible
@@ -40,6 +42,13 @@ TARGET_CATALOG: dict[str, dict[str, str]] = {
             "cancer==1 OR biopsy==1 OR difficult_negative_case==True. "
             "Plus permissif que `cancer` seul — utile quand les positifs "
             "cancer sont trop rares pour entraîner directement."
+        ),
+    },
+    "density": {
+        "column": "density",
+        "definition": (
+            "Catégorie BIRADS de densité mammaire (A/B/C/D). Classification "
+            "multi-classe à 4 sorties. Images sans density renseignée exclues."
         ),
     },
 }
@@ -166,6 +175,62 @@ def write_run_readme(run_dir: Path, meta: dict[str, Any]) -> None:
 def write_args_json(run_dir: Path, meta: dict[str, Any]) -> None:
     """Dump `meta` en JSON dans `run_dir/args.json` (source de vérité machine)."""
     (run_dir / "args.json").write_text(json.dumps(meta, indent=2, default=str))
+
+
+# ─── Checkpoint reprise (--resume) ───────────────────────────────────────────
+# `last.pt` contient tout l'état nécessaire pour reprendre un run interrompu :
+# - poids modèle
+# - état Adam (momentum, etc.)
+# - état du scheduler (warmup → cosine)
+# - bookkeeping early-stop (best_auc / best_epoch / epochs_since_best)
+# Sauvé après chaque epoch — un crash perd au pire l'epoch en cours.
+
+def save_last_checkpoint(
+    path: Path,
+    epoch: int,
+    model: Any,
+    optimizer: Any,
+    scheduler: Any,
+    best_auc: float,
+    best_epoch: int,
+    epochs_since_best: int,
+) -> None:
+    torch.save(
+        {
+            "epoch": epoch,
+            "state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+            "best_auc": best_auc,
+            "best_epoch": best_epoch,
+            "epochs_since_best": epochs_since_best,
+        },
+        path,
+    )
+
+
+def load_last_checkpoint(
+    path: Path,
+    model: Any,
+    optimizer: Any,
+    scheduler: Any,
+    device: str,
+) -> dict[str, Any]:
+    """Restaure model/optimizer/scheduler in-place et retourne l'état de reprise.
+
+    Retour : {start_epoch, best_auc, best_epoch, epochs_since_best}
+    où start_epoch = epoch de la dernière sauvegarde + 1.
+    """
+    ckpt = torch.load(path, map_location=device)
+    model.load_state_dict(ckpt["state_dict"])
+    optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+    scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    return {
+        "start_epoch": ckpt["epoch"] + 1,
+        "best_auc": ckpt["best_auc"],
+        "best_epoch": ckpt["best_epoch"],
+        "epochs_since_best": ckpt["epochs_since_best"],
+    }
 
 
 # ─── Format durée ────────────────────────────────────────────────────────────

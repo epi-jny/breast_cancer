@@ -1,1 +1,0 @@
-/root/projet_cancer_sein/data/sample/train_images

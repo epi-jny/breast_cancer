@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.450">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>ResNet18 from scratch vs GMIC — Comparaison sur le val set RSNA</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="rsna_comparison_files/libs/clipboard/clipboard.min.js"></script>
+<script src="rsna_comparison_files/libs/quarto-html/quarto.js"></script>
+<script src="rsna_comparison_files/libs/quarto-html/popper.min.js"></script>
+<script src="rsna_comparison_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="rsna_comparison_files/libs/quarto-html/anchor.min.js"></script>
+<link href="rsna_comparison_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="rsna_comparison_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="rsna_comparison_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="rsna_comparison_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="rsna_comparison_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" integrity="sha512-c3Nl8+7g4LMSTdrm621y7kf9v3SDPnhxLNhcjFJbKECVnmZHTdo+IRO05sNLTH/D3vA6u1X32ehoLC7WFVdheg==" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+</head>
+
+<body>
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+<div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+  <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Table of contents</h2>
+   
+  <ul>
+  <li><a href="#intro" id="toc-intro" class="nav-link active" data-scroll-target="#intro">Intro</a></li>
+  <li><a href="#partie-i-le-val-set-rsna" id="toc-partie-i-le-val-set-rsna" class="nav-link" data-scroll-target="#partie-i-le-val-set-rsna">Partie I — Le val set RSNA</a>
+  <ul class="collapse">
+  <li><a href="#exemples-visuels-du-val-set" id="toc-exemples-visuels-du-val-set" class="nav-link" data-scroll-target="#exemples-visuels-du-val-set">Exemples visuels du val set</a></li>
+  </ul></li>
+  <li><a href="#partie-ii-modèle-1-resnet18" id="toc-partie-ii-modèle-1-resnet18" class="nav-link" data-scroll-target="#partie-ii-modèle-1-resnet18">Partie II — Modèle 1 : ResNet18</a>
+  <ul class="collapse">
+  <li><a href="#architecture-en-bref" id="toc-architecture-en-bref" class="nav-link" data-scroll-target="#architecture-en-bref">Architecture en bref</a></li>
+  <li><a href="#chargement-du-meilleur-checkpoint" id="toc-chargement-du-meilleur-checkpoint" class="nav-link" data-scroll-target="#chargement-du-meilleur-checkpoint">Chargement du meilleur checkpoint</a></li>
+  <li><a href="#agrégation-image-exam" id="toc-agrégation-image-exam" class="nav-link" data-scroll-target="#agrégation-image-exam">Agrégation image → exam</a></li>
+  </ul></li>
+  <li><a href="#partie-iii-modèle-2-gmic" id="toc-partie-iii-modèle-2-gmic" class="nav-link" data-scroll-target="#partie-iii-modèle-2-gmic">Partie III — Modèle 2 : GMIC</a>
+  <ul class="collapse">
+  <li><a href="#architecture-en-bref-1" id="toc-architecture-en-bref-1" class="nav-link" data-scroll-target="#architecture-en-bref-1">Architecture en bref</a></li>
+  <li><a href="#inférence-sur-le-val-set" id="toc-inférence-sur-le-val-set" class="nav-link" data-scroll-target="#inférence-sur-le-val-set">Inférence sur le val set</a></li>
+  </ul></li>
+  <li><a href="#partie-iv-comparaison" id="toc-partie-iv-comparaison" class="nav-link" data-scroll-target="#partie-iv-comparaison">Partie IV — Comparaison</a>
+  <ul class="collapse">
+  <li><a href="#tableau-récapitulatif" id="toc-tableau-récapitulatif" class="nav-link" data-scroll-target="#tableau-récapitulatif">Tableau récapitulatif</a></li>
+  <li><a href="#courbes-roc-superposées" id="toc-courbes-roc-superposées" class="nav-link" data-scroll-target="#courbes-roc-superposées">Courbes ROC superposées</a></li>
+  <li><a href="#distributions-des-scores-pmalin" id="toc-distributions-des-scores-pmalin" class="nav-link" data-scroll-target="#distributions-des-scores-pmalin">Distributions des scores P(malin)</a></li>
+  <li><a href="#cas-intéressants-désaccords-entre-les-deux-modèles" id="toc-cas-intéressants-désaccords-entre-les-deux-modèles" class="nav-link" data-scroll-target="#cas-intéressants-désaccords-entre-les-deux-modèles">Cas intéressants : désaccords entre les deux modèles</a></li>
+  </ul></li>
+  <li><a href="#partie-v-conclusion" id="toc-partie-v-conclusion" class="nav-link" data-scroll-target="#partie-v-conclusion">Partie V — Conclusion</a>
+  <ul class="collapse">
+  <li><a href="#pourquoi-gmic-fait-généralement-mieux" id="toc-pourquoi-gmic-fait-généralement-mieux" class="nav-link" data-scroll-target="#pourquoi-gmic-fait-généralement-mieux">Pourquoi GMIC fait (généralement) mieux</a></li>
+  <li><a href="#ce-quil-faudrait-pour-que-resnet18-soit-compétitif" id="toc-ce-quil-faudrait-pour-que-resnet18-soit-compétitif" class="nav-link" data-scroll-target="#ce-quil-faudrait-pour-que-resnet18-soit-compétitif">Ce qu’il faudrait pour que ResNet18 soit compétitif</a></li>
+  <li><a href="#pour-aller-plus-loin" id="toc-pour-aller-plus-loin" class="nav-link" data-scroll-target="#pour-aller-plus-loin">Pour aller plus loin</a></li>
+  </ul></li>
+  </ul>
+</nav>
+</div>
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">ResNet18 from scratch vs GMIC — Comparaison sur le val set RSNA</h1>
+<p class="subtitle lead">Même 190 examens : backbone générique entraîné de zéro vs architecture spécialisée mammographie</p>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="cell" data-execution_count="1">
+<div class="cell-output cell-output-stdout">
+<pre><code>Device : cuda</code></pre>
+</div>
+</div>
+<section id="intro" class="level1">
+<h1>Intro</h1>
+<p>Ce notebook compare deux approches de détection de cancer du sein sur <strong>exactement le même jeu de validation</strong> — les ~190 examens RSNA réservés lors de l’entraînement.</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: left;"></th>
+<th style="text-align: left;">ResNet18</th>
+<th style="text-align: left;">GMIC</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><strong>Niveau</strong></td>
+<td style="text-align: left;">Image (1 vue = 1 prédiction)</td>
+<td style="text-align: left;">Image (1 vue = 1 prédiction, agrégé par exam)</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong>Pré-entraînement</strong></td>
+<td style="text-align: left;">Aucun — poids initialisés aléatoirement (<code>weights=None</code>)</td>
+<td style="text-align: left;">Mammographies NYU (~230 k images)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><strong>Architecture</strong></td>
+<td style="text-align: left;">Backbone générique + Linear(512,1)</td>
+<td style="text-align: left;">ResNetV2 + saliency + K patches + attention</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><strong>Entraîné ici ?</strong></td>
+<td style="text-align: left;">Oui — <code>fine_tuning/train_resnet.py</code></td>
+<td style="text-align: left;">Non — poids NYU pré-chargés</td>
+</tr>
+</tbody>
+</table>
+<p>Aucun entraînement n’a lieu dans ce notebook. On charge les résultats déjà calculés pour ResNet18, on lance l’inférence GMIC sur le val set, puis on compare les deux courbes ROC.</p>
+<hr>
+</section>
+<section id="partie-i-le-val-set-rsna" class="level1">
+<h1>Partie I — Le val set RSNA</h1>
+<div class="cell" data-execution_count="2">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>_, val_exams <span class="op">=</span> load_and_split(EXAM_LIST_PATH)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>n_cancer <span class="op">=</span> <span class="bu">sum</span>(<span class="dv">1</span> <span class="cf">for</span> e <span class="kw">in</span> val_exams <span class="cf">if</span> e[<span class="st">"cancer_label"</span>][<span class="st">"malignant"</span>] <span class="op">==</span> <span class="dv">1</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>n_sain   <span class="op">=</span> <span class="bu">len</span>(val_exams) <span class="op">-</span> n_cancer</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>exam_labels <span class="op">=</span> [<span class="bu">int</span>(e[<span class="st">"cancer_label"</span>][<span class="st">"malignant"</span>]) <span class="cf">for</span> e <span class="kw">in</span> val_exams]</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Val set : </span><span class="sc">{</span><span class="bu">len</span>(val_exams)<span class="sc">}</span><span class="ss"> exams  |  cancer=</span><span class="sc">{</span>n_cancer<span class="sc">}</span><span class="ss">  sain=</span><span class="sc">{</span>n_sain<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Taux de cancer : </span><span class="sc">{</span><span class="dv">100</span><span class="op">*</span>n_cancer<span class="op">/</span><span class="bu">len</span>(val_exams)<span class="sc">:.1f}</span><span class="ss"> %"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>Train : 761 exams  |  cancer=30  sain=731
+Val   : 191  exams  |  cancer=8   sain=183
+Val set : 191 exams  |  cancer=8  sain=183
+Taux de cancer : 4.2 %</code></pre>
+</div>
+</div>
+<p>Le val set est obtenu avec le <strong>même <code>RANDOM_SEED=42</code></strong> que l’entraînement : les examens sont identiques quoi qu’il arrive.</p>
+<section id="exemples-visuels-du-val-set" class="level2">
+<h2 class="anchored" data-anchor-id="exemples-visuels-du-val-set">Exemples visuels du val set</h2>
+<div class="cell" data-execution_count="3">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> _first_lccc(exam):</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Retourne le chemin PNG de la vue L-CC d'un exam, ou None."""</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> rel <span class="kw">in</span> exam.get(<span class="st">"L-CC"</span>, []):</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>        p <span class="op">=</span> os.path.join(IMAGE_DIR, rel <span class="op">+</span> <span class="st">".png"</span>)</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> os.path.exists(p):</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>            <span class="cf">return</span> p</span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="va">None</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>cancer_exs <span class="op">=</span> [e <span class="cf">for</span> e <span class="kw">in</span> val_exams <span class="cf">if</span> e[<span class="st">"cancer_label"</span>][<span class="st">"malignant"</span>] <span class="op">==</span> <span class="dv">1</span>]</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>sain_exs   <span class="op">=</span> [e <span class="cf">for</span> e <span class="kw">in</span> val_exams <span class="cf">if</span> e[<span class="st">"cancer_label"</span>][<span class="st">"malignant"</span>] <span class="op">==</span> <span class="dv">0</span>]</span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Cherche le premier exam avec une L-CC disponible</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>cancer_img <span class="op">=</span> <span class="bu">next</span>((p <span class="cf">for</span> e <span class="kw">in</span> cancer_exs <span class="cf">if</span> (p <span class="op">:=</span> _first_lccc(e))), <span class="va">None</span>)</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>sain_img   <span class="op">=</span> <span class="bu">next</span>((p <span class="cf">for</span> e <span class="kw">in</span> sain_exs   <span class="cf">if</span> (p <span class="op">:=</span> _first_lccc(e))), <span class="va">None</span>)</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> cancer_img <span class="kw">and</span> sain_img:</span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    fig, axes <span class="op">=</span> plt.subplots(<span class="dv">1</span>, <span class="dv">2</span>, figsize<span class="op">=</span>(<span class="dv">10</span>, <span class="dv">5</span>))</span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> ax, path, title <span class="kw">in</span> <span class="bu">zip</span>(axes, [sain_img, cancer_img], [<span class="st">"Sain"</span>, <span class="st">"Cancer"</span>]):</span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>        img <span class="op">=</span> imageio.imread(path)</span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a>        ax.imshow(img, cmap<span class="op">=</span><span class="st">"gray"</span>, aspect<span class="op">=</span><span class="st">"auto"</span>)</span>
+<span id="cb4-21"><a href="#cb4-21" aria-hidden="true" tabindex="-1"></a>        ax.set_title(title, fontsize<span class="op">=</span><span class="dv">14</span>, weight<span class="op">=</span><span class="st">"bold"</span>)</span>
+<span id="cb4-22"><a href="#cb4-22" aria-hidden="true" tabindex="-1"></a>        ax.axis(<span class="st">"off"</span>)</span>
+<span id="cb4-23"><a href="#cb4-23" aria-hidden="true" tabindex="-1"></a>    fig.suptitle(<span class="st">"Vue L-CC — val set RSNA"</span>, fontsize<span class="op">=</span><span class="dv">13</span>)</span>
+<span id="cb4-24"><a href="#cb4-24" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
+<span id="cb4-25"><a href="#cb4-25" aria-hidden="true" tabindex="-1"></a>    plt.show()</span>
+<span id="cb4-26"><a href="#cb4-26" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb4-27"><a href="#cb4-27" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Images de démonstration non disponibles."</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="rsna_comparison_files/figure-html/cell-4-output-1.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">Exemples du val set — vue L-CC d’un exam sain (gauche) et d’un exam cancer (droite)</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="partie-ii-modèle-1-resnet18" class="level1">
+<h1>Partie II — Modèle 1 : ResNet18</h1>
+<section id="architecture-en-bref" class="level2">
+<h2 class="anchored" data-anchor-id="architecture-en-bref">Architecture en bref</h2>
+<p>ResNet18 est un backbone générique conçu pour la reconnaissance d’objets naturels.</p>
+<p><strong>Comment on l’adapte à la mammographie :</strong></p>
+<ol type="1">
+<li><strong>Image-level</strong> — chaque vue (L-CC, L-MLO, R-CC, R-MLO) est traitée comme un échantillon indépendant. Un exam produit jusqu’à 4 prédictions, qu’on moyenne en sortie.</li>
+<li><strong>Grayscale → RGB</strong> — les images mammographiques en niveaux de gris sont dupliquées sur 3 canaux pour rentrer dans le ResNet standard.</li>
+<li><strong>Resize 512×512</strong> — redimensionnement anisotrope (pas de crop) pour ne pas perdre de tissu périphérique.</li>
+<li><strong>Head binaire</strong> — <code>model.fc = nn.Linear(512, 1)</code>. Une seule sortie, <code>BCEWithLogitsLoss</code>.</li>
+<li><strong>WeightedRandomSampler</strong> — le déséquilibre 24:1 (sain:cancer) est compensé par un échantillonnage 50/50 à chaque batch.</li>
+</ol>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="co"># L'essentiel du code — ResNet18 from scratch (aucun pré-entraînement)</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>model <span class="op">=</span> torchvision.models.resnet18(weights<span class="op">=</span><span class="va">None</span>)  <span class="co"># poids initialisés aléatoirement</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>model.fc <span class="op">=</span> nn.Linear(model.fc.in_features, <span class="dv">1</span>)      <span class="co"># remplace la tête 1000-classes</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="chargement-du-meilleur-checkpoint" class="level2">
+<h2 class="anchored" data-anchor-id="chargement-du-meilleur-checkpoint">Chargement du meilleur checkpoint</h2>
+<div class="cell" data-execution_count="4">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Ordre de priorité :</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="co">#   1. runs/*scratch*/best.pt  (run isolation, from-scratch)</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a><span class="co">#   2. resnet18_best.pt        (ancien format, avant run isolation — aussi from-scratch)</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="co">#   3. runs/*/best.pt          (fallback, peut être pretrained)</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>scratch_runs  <span class="op">=</span> <span class="bu">sorted</span>(glob.glob(<span class="bu">str</span>(CKPT_DIR <span class="op">/</span> <span class="st">"runs"</span> <span class="op">/</span> <span class="st">"*scratch*"</span> <span class="op">/</span> <span class="st">"best.pt"</span>)))</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>legacy_ckpt   <span class="op">=</span> CKPT_DIR <span class="op">/</span> <span class="st">"resnet18_best.pt"</span></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>all_runs      <span class="op">=</span> <span class="bu">sorted</span>(glob.glob(<span class="bu">str</span>(CKPT_DIR <span class="op">/</span> <span class="st">"runs"</span> <span class="op">/</span> <span class="st">"*"</span> <span class="op">/</span> <span class="st">"best.pt"</span>)))</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> scratch_runs:</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    ckpt_path  <span class="op">=</span> scratch_runs[<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>    is_legacy  <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="cf">elif</span> legacy_ckpt.exists():</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>    ckpt_path  <span class="op">=</span> <span class="bu">str</span>(legacy_ckpt)</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    is_legacy  <span class="op">=</span> <span class="va">True</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a><span class="cf">elif</span> all_runs:</span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    ckpt_path  <span class="op">=</span> all_runs[<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>    is_legacy  <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb6-18"><a href="#cb6-18" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"⚠️  Aucun run 'scratch' trouvé — utilisation du run le plus récent."</span>)</span>
+<span id="cb6-19"><a href="#cb6-19" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"    Pour un run from-scratch : python -m fine_tuning.train_resnet"</span>)</span>
+<span id="cb6-20"><a href="#cb6-20" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb6-21"><a href="#cb6-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">raise</span> <span class="pp">FileNotFoundError</span>(</span>
+<span id="cb6-22"><a href="#cb6-22" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Aucun checkpoint trouvé.</span><span class="ch">\n</span><span class="st">"</span></span>
+<span id="cb6-23"><a href="#cb6-23" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Lance d'abord : python -m fine_tuning.train_resnet"</span></span>
+<span id="cb6-24"><a href="#cb6-24" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb6-25"><a href="#cb6-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-26"><a href="#cb6-26" aria-hidden="true" tabindex="-1"></a>ckpt <span class="op">=</span> torch.load(ckpt_path, map_location<span class="op">=</span><span class="st">"cpu"</span>, weights_only<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb6-27"><a href="#cb6-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-28"><a href="#cb6-28" aria-hidden="true" tabindex="-1"></a>val_preds_img  <span class="op">=</span> ckpt[<span class="st">"val_preds"</span>]</span>
+<span id="cb6-29"><a href="#cb6-29" aria-hidden="true" tabindex="-1"></a>val_auc_resnet <span class="op">=</span> ckpt[<span class="st">"val_auc"</span>]</span>
+<span id="cb6-30"><a href="#cb6-30" aria-hidden="true" tabindex="-1"></a>best_epoch     <span class="op">=</span> ckpt[<span class="st">"epoch"</span>]</span>
+<span id="cb6-31"><a href="#cb6-31" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-32"><a href="#cb6-32" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> is_legacy:</span>
+<span id="cb6-33"><a href="#cb6-33" aria-hidden="true" tabindex="-1"></a>    pretrained <span class="op">=</span> <span class="va">False</span></span>
+<span id="cb6-34"><a href="#cb6-34" aria-hidden="true" tabindex="-1"></a>    args <span class="op">=</span> {}</span>
+<span id="cb6-35"><a href="#cb6-35" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="st">"Checkpoint : resnet18_best.pt (ancien format, from scratch)"</span>)</span>
+<span id="cb6-36"><a href="#cb6-36" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb6-37"><a href="#cb6-37" aria-hidden="true" tabindex="-1"></a>    args_path <span class="op">=</span> Path(ckpt_path).parent <span class="op">/</span> <span class="st">"args.json"</span></span>
+<span id="cb6-38"><a href="#cb6-38" aria-hidden="true" tabindex="-1"></a>    args <span class="op">=</span> json.loads(args_path.read_text()) <span class="cf">if</span> args_path.exists() <span class="cf">else</span> {}</span>
+<span id="cb6-39"><a href="#cb6-39" aria-hidden="true" tabindex="-1"></a>    pretrained <span class="op">=</span> args.get(<span class="st">"pretrained"</span>, <span class="va">False</span>)</span>
+<span id="cb6-40"><a href="#cb6-40" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> pretrained:</span>
+<span id="cb6-41"><a href="#cb6-41" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"⚠️  Ce checkpoint utilise les poids ImageNet (--pretrained)."</span>)</span>
+<span id="cb6-42"><a href="#cb6-42" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="st">"    La comparaison sera moins franche qu'avec weights=None."</span>)</span>
+<span id="cb6-43"><a href="#cb6-43" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Checkpoint : </span><span class="sc">{</span>Path(ckpt_path)<span class="sc">.</span>parent<span class="sc">.</span>name<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb6-44"><a href="#cb6-44" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-45"><a href="#cb6-45" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Meilleur epoch : </span><span class="sc">{</span>best_epoch<span class="sc">}</span><span class="ss">  |  AUC image-level : </span><span class="sc">{</span>val_auc_resnet<span class="sc">:.4f}</span><span class="ss">"</span>)</span>
+<span id="cb6-46"><a href="#cb6-46" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"From scratch : </span><span class="sc">{</span><span class="kw">not</span> pretrained<span class="sc">}</span><span class="ss">  |  Nombre de prédictions (images) : </span><span class="sc">{</span><span class="bu">len</span>(val_preds_img)<span class="sc">}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>Checkpoint : resnet18_best.pt (ancien format, from scratch)
+Meilleur epoch : 2  |  AUC image-level : 0.6016
+From scratch : True  |  Nombre de prédictions (images) : 878</code></pre>
+</div>
+</div>
+</section>
+<section id="agrégation-image-exam" class="level2">
+<h2 class="anchored" data-anchor-id="agrégation-image-exam">Agrégation image → exam</h2>
+<div class="cell" data-execution_count="5">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Reconstruit l'ordre des entrées val (identique au DataLoader shuffle=False)</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>val_entries <span class="op">=</span> _make_entries(val_exams)</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> <span class="bu">len</span>(val_entries) <span class="op">==</span> <span class="bu">len</span>(val_preds_img), (</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="ss">f"Désaccord : </span><span class="sc">{</span><span class="bu">len</span>(val_entries)<span class="sc">}</span><span class="ss"> entrées vs </span><span class="sc">{</span><span class="bu">len</span>(val_preds_img)<span class="sc">}</span><span class="ss"> prédictions. "</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Le checkpoint ne correspond peut-être pas au split actuel."</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>idx <span class="op">=</span> <span class="dv">0</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>resnet_exam_scores <span class="op">=</span> []</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> exam <span class="kw">in</span> val_exams:</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    n_views <span class="op">=</span> <span class="bu">sum</span>(</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>        <span class="dv">1</span> <span class="cf">for</span> v <span class="kw">in</span> VIEWS</span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> r <span class="kw">in</span> exam.get(v, [])</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> os.path.exists(os.path.join(IMAGE_DIR, r <span class="op">+</span> <span class="st">".png"</span>))</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    view_preds <span class="op">=</span> val_preds_img[idx: idx <span class="op">+</span> n_views]</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>    resnet_exam_scores.append(<span class="bu">float</span>(np.mean(view_preds)) <span class="cf">if</span> view_preds <span class="cf">else</span> <span class="fl">0.5</span>)</span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>    idx <span class="op">+=</span> n_views</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>resnet_exam_scores <span class="op">=</span> np.array(resnet_exam_scores)</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>auc_resnet_exam <span class="op">=</span> roc_auc_score(exam_labels, resnet_exam_scores)</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"AUC ResNet18 (niveau exam) : </span><span class="sc">{</span>auc_resnet_exam<span class="sc">:.4f}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>AUC ResNet18 (niveau exam) : 0.5963</code></pre>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="partie-iii-modèle-2-gmic" class="level1">
+<h1>Partie III — Modèle 2 : GMIC</h1>
+<section id="architecture-en-bref-1" class="level2">
+<h2 class="anchored" data-anchor-id="architecture-en-bref-1">Architecture en bref</h2>
+<p>GMIC (<em>Globally-aware Multiple Instance Classifier</em>, Shen et al.&nbsp;2020) est une architecture spécialisée mammographie développée par NYU.</p>
+<p><strong>Ce qui le distingue de ResNet18 :</strong></p>
+<ol type="1">
+<li><strong>Pré-entraînement domaine</strong> — les poids NYU ont été appris sur ~230 000 mammographies. Le backbone <em>connaît déjà</em> les textures tissulaires avant même de voir vos données.</li>
+<li><strong>Pipeline en 6 étages</strong> — GlobalNet → saliency map → sélection gloutonne de K=6 ROI → LocalNet sur chaque patch → Gated Attention → Fusion.</li>
+<li><strong>Résolution native</strong> — contrairement à ResNet18, GMIC accepte les images full-resolution (2944×1920) : le GlobalNet travaille à basse résolution (46×30 CAM), le LocalNet zoome sur les 6 zones les plus suspectes.</li>
+<li><strong>Attention interprétable</strong> — les poids α_k (somme = 1 sur les K patches) indiquent quelles zones ont guidé la décision.</li>
+<li><strong>Poids chargés via remapping</strong> — 258 clés NYU sont renommées pour correspondre à notre <code>ScratchGMIC</code> (cf.&nbsp;<code>scripts/gmic_from_scratch.py</code>).</li>
+</ol>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># L'essentiel du code — GMIC "from scratch" (nn.Module standard)</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> scripts.gmic_from_scratch <span class="im">import</span> ScratchGMIC, load_nyu_weights</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>model_gmic <span class="op">=</span> ScratchGMIC(K<span class="op">=</span><span class="dv">6</span>, crop_shape<span class="op">=</span>(<span class="dv">256</span>,<span class="dv">256</span>), cam_size<span class="op">=</span>(<span class="dv">46</span>,<span class="dv">30</span>), num_classes<span class="op">=</span><span class="dv">2</span>)</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>load_nyu_weights(model_gmic, <span class="st">"GMIC/models/sample_model_1.p"</span>, device<span class="op">=</span>device)</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="co"># → y_fusion = model_gmic(x)   # x : (1,1,H,W) — une vue à la fois</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="inférence-sur-le-val-set" class="level2">
+<h2 class="anchored" data-anchor-id="inférence-sur-le-val-set">Inférence sur le val set</h2>
+<div class="cell" data-execution_count="6">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> scripts.gmic_from_scratch <span class="im">import</span> ScratchGMIC, load_nyu_weights</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>model_gmic <span class="op">=</span> ScratchGMIC(</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    K<span class="op">=</span><span class="dv">6</span>, crop_shape<span class="op">=</span>(<span class="dv">256</span>, <span class="dv">256</span>), cam_size<span class="op">=</span>(<span class="dv">46</span>, <span class="dv">30</span>),</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    percent_t<span class="op">=</span><span class="fl">0.02</span>, num_classes<span class="op">=</span><span class="dv">2</span>,</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    device_type<span class="op">=</span><span class="st">"gpu"</span> <span class="cf">if</span> DEVICE.<span class="bu">type</span> <span class="op">==</span> <span class="st">"cuda"</span> <span class="cf">else</span> <span class="st">"cpu"</span>,</span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>    gpu_number<span class="op">=</span><span class="dv">0</span>,</span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>).to(DEVICE).<span class="bu">eval</span>()</span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>load_nyu_weights(model_gmic, <span class="bu">str</span>(NYU_CKPT), device<span class="op">=</span>DEVICE)</span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Cache : évite de relancer ~764 forward passes (~20 min) à chaque rendu.</span></span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>GMIC_CACHE <span class="op">=</span> CKPT_DIR <span class="op">/</span> <span class="st">"gmic_val_scores.json"</span></span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> GMIC_CACHE.exists():</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>    cache <span class="op">=</span> json.loads(GMIC_CACHE.read_text())</span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a>    gmic_exam_scores <span class="op">=</span> np.array(cache[<span class="st">"scores"</span>])</span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Scores GMIC chargés depuis le cache (</span><span class="sc">{</span>GMIC_CACHE<span class="sc">.</span>name<span class="sc">}</span><span class="ss">)"</span>)</span>
+<span id="cb11-19"><a href="#cb11-19" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb11-20"><a href="#cb11-20" aria-hidden="true" tabindex="-1"></a>    gmic_exam_scores <span class="op">=</span> []</span>
+<span id="cb11-21"><a href="#cb11-21" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> exam <span class="kw">in</span> tqdm(val_exams, desc<span class="op">=</span><span class="st">"GMIC inférence"</span>, unit<span class="op">=</span><span class="st">"exam"</span>):</span>
+<span id="cb11-22"><a href="#cb11-22" aria-hidden="true" tabindex="-1"></a>        view_scores <span class="op">=</span> []</span>
+<span id="cb11-23"><a href="#cb11-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> view <span class="kw">in</span> VIEWS:</span>
+<span id="cb11-24"><a href="#cb11-24" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> rel <span class="kw">in</span> exam.get(view, []):</span>
+<span id="cb11-25"><a href="#cb11-25" aria-hidden="true" tabindex="-1"></a>                path <span class="op">=</span> os.path.join(IMAGE_DIR, rel <span class="op">+</span> <span class="st">".png"</span>)</span>
+<span id="cb11-26"><a href="#cb11-26" aria-hidden="true" tabindex="-1"></a>                <span class="cf">if</span> <span class="kw">not</span> os.path.exists(path):</span>
+<span id="cb11-27"><a href="#cb11-27" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">continue</span></span>
+<span id="cb11-28"><a href="#cb11-28" aria-hidden="true" tabindex="-1"></a>                img <span class="op">=</span> imageio.imread(path).astype(np.float32)</span>
+<span id="cb11-29"><a href="#cb11-29" aria-hidden="true" tabindex="-1"></a>                img <span class="op">=</span> (img <span class="op">-</span> img.mean()) <span class="op">/</span> <span class="bu">max</span>(img.std(), <span class="fl">1e-5</span>)</span>
+<span id="cb11-30"><a href="#cb11-30" aria-hidden="true" tabindex="-1"></a>                x <span class="op">=</span> torch.tensor(img[<span class="va">None</span>, <span class="va">None</span>]).to(DEVICE)</span>
+<span id="cb11-31"><a href="#cb11-31" aria-hidden="true" tabindex="-1"></a>                <span class="cf">with</span> torch.no_grad():</span>
+<span id="cb11-32"><a href="#cb11-32" aria-hidden="true" tabindex="-1"></a>                    y <span class="op">=</span> model_gmic(x)</span>
+<span id="cb11-33"><a href="#cb11-33" aria-hidden="true" tabindex="-1"></a>                view_scores.append(y[<span class="dv">0</span>, <span class="dv">1</span>].item())   <span class="co"># P(malin)</span></span>
+<span id="cb11-34"><a href="#cb11-34" aria-hidden="true" tabindex="-1"></a>        gmic_exam_scores.append(<span class="bu">float</span>(np.mean(view_scores)) <span class="cf">if</span> view_scores <span class="cf">else</span> <span class="fl">0.5</span>)</span>
+<span id="cb11-35"><a href="#cb11-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-36"><a href="#cb11-36" aria-hidden="true" tabindex="-1"></a>    gmic_exam_scores <span class="op">=</span> np.array(gmic_exam_scores)</span>
+<span id="cb11-37"><a href="#cb11-37" aria-hidden="true" tabindex="-1"></a>    GMIC_CACHE.write_text(json.dumps({<span class="st">"scores"</span>: gmic_exam_scores.tolist()}, indent<span class="op">=</span><span class="dv">2</span>))</span>
+<span id="cb11-38"><a href="#cb11-38" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Scores GMIC sauvegardés → </span><span class="sc">{</span>GMIC_CACHE<span class="sc">.</span>name<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb11-39"><a href="#cb11-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-40"><a href="#cb11-40" aria-hidden="true" tabindex="-1"></a>auc_gmic_exam <span class="op">=</span> roc_auc_score(exam_labels, gmic_exam_scores)</span>
+<span id="cb11-41"><a href="#cb11-41" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"AUC GMIC (niveau exam) : </span><span class="sc">{</span>auc_gmic_exam<span class="sc">:.4f}</span><span class="ss">"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>Chargé : 258 clés remappées depuis sample_model_1.p
+  ignorées (non utilisées par GMIC)  : 1
+  manquantes (attendues mais absentes) : 0
+  inattendues (présentes mais non utilisées) : 0
+Scores GMIC chargés depuis le cache (gmic_val_scores.json)
+AUC GMIC (niveau exam) : 0.7452</code></pre>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="partie-iv-comparaison" class="level1">
+<h1>Partie IV — Comparaison</h1>
+<section id="tableau-récapitulatif" class="level2">
+<h2 class="anchored" data-anchor-id="tableau-récapitulatif">Tableau récapitulatif</h2>
+<div class="cell" data-execution_count="7">
+<div class="cell-output cell-output-display" data-execution_count="7">
+<div>
+
+
+<table class="dataframe table table-sm table-striped small" data-quarto-postprocess="true" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">Modèle</th>
+<th data-quarto-table-cell-role="th">Pré-entraînement</th>
+<th data-quarto-table-cell-role="th">Niveau inférence</th>
+<th data-quarto-table-cell-role="th">AUC val (exam)</th>
+<th data-quarto-table-cell-role="th">Exams val</th>
+<th data-quarto-table-cell-role="th">Cancer val</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td data-quarto-table-cell-role="th">0</td>
+<td>ResNet18</td>
+<td>From scratch (weights=None)</td>
+<td>Image → agrégé exam</td>
+<td>0.5963</td>
+<td>191</td>
+<td>8</td>
+</tr>
+<tr class="even">
+<td data-quarto-table-cell-role="th">1</td>
+<td>GMIC</td>
+<td>NYU Mammographies</td>
+<td>Image → agrégé exam</td>
+<td>0.7452</td>
+<td>191</td>
+<td>8</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+</section>
+<section id="courbes-roc-superposées" class="level2">
+<h2 class="anchored" data-anchor-id="courbes-roc-superposées">Courbes ROC superposées</h2>
+<div class="cell" data-execution_count="8">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>fpr_r, tpr_r, _ <span class="op">=</span> roc_curve(exam_labels, resnet_exam_scores)</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>fpr_g, tpr_g, _ <span class="op">=</span> roc_curve(exam_labels, gmic_exam_scores)</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>fig, ax <span class="op">=</span> plt.subplots(figsize<span class="op">=</span>(<span class="dv">6</span>, <span class="dv">6</span>))</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>ax.plot(fpr_r, tpr_r, color<span class="op">=</span><span class="st">"steelblue"</span>,  lw<span class="op">=</span><span class="fl">2.5</span>,</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>        label<span class="op">=</span><span class="ss">f"ResNet18 (AUC = </span><span class="sc">{</span>auc_resnet_exam<span class="sc">:.3f}</span><span class="ss">)"</span>)</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>ax.plot(fpr_g, tpr_g, color<span class="op">=</span><span class="st">"firebrick"</span>,  lw<span class="op">=</span><span class="fl">2.5</span>,</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>        label<span class="op">=</span><span class="ss">f"GMIC     (AUC = </span><span class="sc">{</span>auc_gmic_exam<span class="sc">:.3f}</span><span class="ss">)"</span>)</span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>ax.plot([<span class="dv">0</span>, <span class="dv">1</span>], [<span class="dv">0</span>, <span class="dv">1</span>], <span class="st">"k--"</span>, lw<span class="op">=</span><span class="dv">1</span>, label<span class="op">=</span><span class="st">"Hasard (0.5)"</span>)</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>ax.set_xlabel(<span class="st">"Taux de faux positifs (FPR)"</span>, fontsize<span class="op">=</span><span class="dv">12</span>)</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>ax.set_ylabel(<span class="st">"Taux de vrais positifs (TPR)"</span>, fontsize<span class="op">=</span><span class="dv">12</span>)</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>ax.set_title(<span class="st">"ROC — val set RSNA"</span>, fontsize<span class="op">=</span><span class="dv">13</span>)</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>ax.legend(fontsize<span class="op">=</span><span class="dv">11</span>)</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>ax.grid(alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="rsna_comparison_files/figure-html/cell-9-output-1.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">Courbes ROC — ResNet18 vs GMIC sur le val set RSNA (niveau exam)</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="distributions-des-scores-pmalin" class="level2">
+<h2 class="anchored" data-anchor-id="distributions-des-scores-pmalin">Distributions des scores P(malin)</h2>
+<div class="cell" data-execution_count="9">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>labels_arr <span class="op">=</span> np.array(exam_labels)</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>fig, axes <span class="op">=</span> plt.subplots(<span class="dv">1</span>, <span class="dv">2</span>, figsize<span class="op">=</span>(<span class="dv">12</span>, <span class="dv">4</span>), sharey<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> ax, scores, title <span class="kw">in</span> <span class="bu">zip</span>(</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    axes,</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    [resnet_exam_scores, gmic_exam_scores],</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    [<span class="ss">f"ResNet18  (AUC=</span><span class="sc">{</span>auc_resnet_exam<span class="sc">:.3f}</span><span class="ss">)"</span>, <span class="ss">f"GMIC  (AUC=</span><span class="sc">{</span>auc_gmic_exam<span class="sc">:.3f}</span><span class="ss">)"</span>],</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>):</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    ax.hist(scores[labels_arr <span class="op">==</span> <span class="dv">0</span>], bins<span class="op">=</span><span class="dv">30</span>, alpha<span class="op">=</span><span class="fl">0.6</span>,</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>            color<span class="op">=</span><span class="st">"steelblue"</span>, label<span class="op">=</span><span class="st">"Sain"</span>, density<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>    ax.hist(scores[labels_arr <span class="op">==</span> <span class="dv">1</span>], bins<span class="op">=</span><span class="dv">15</span>, alpha<span class="op">=</span><span class="fl">0.7</span>,</span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>            color<span class="op">=</span><span class="st">"firebrick"</span>, label<span class="op">=</span><span class="st">"Cancer"</span>, density<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>    ax.set_xlabel(<span class="st">"P(malin)"</span>, fontsize<span class="op">=</span><span class="dv">11</span>)</span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>    ax.set_ylabel(<span class="st">"Densité"</span>, fontsize<span class="op">=</span><span class="dv">11</span>)</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>    ax.set_title(title, fontsize<span class="op">=</span><span class="dv">12</span>)</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>    ax.legend(fontsize<span class="op">=</span><span class="dv">10</span>)</span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a>    ax.grid(alpha<span class="op">=</span><span class="fl">0.3</span>)</span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>plt.suptitle(<span class="st">"Séparabilité cancer / sain"</span>, fontsize<span class="op">=</span><span class="dv">13</span>, y<span class="op">=</span><span class="fl">1.02</span>)</span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>plt.tight_layout()</span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>plt.show()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="rsna_comparison_files/figure-html/cell-10-output-1.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">Distribution des scores de malignité — cancer vs sain pour chaque modèle</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<p><em>Un bon modèle sépare les deux distributions — les cancer à droite (scores élevés), les sains à gauche (scores faibles).</em></p>
+</section>
+<section id="cas-intéressants-désaccords-entre-les-deux-modèles" class="level2">
+<h2 class="anchored" data-anchor-id="cas-intéressants-désaccords-entre-les-deux-modèles">Cas intéressants : désaccords entre les deux modèles</h2>
+<div class="cell" data-execution_count="10">
+<details>
+<summary>Code</summary>
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Écart de score entre GMIC et ResNet18 pour chaque exam cancer</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>diff <span class="op">=</span> gmic_exam_scores <span class="op">-</span> resnet_exam_scores</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>cancer_idx <span class="op">=</span> [i <span class="cf">for</span> i, l <span class="kw">in</span> <span class="bu">enumerate</span>(exam_labels) <span class="cf">if</span> l <span class="op">==</span> <span class="dv">1</span>]</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="bu">len</span>(cancer_idx) <span class="op">&gt;=</span> <span class="dv">3</span>:</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    <span class="co"># GMIC &gt;&gt; ResNet18  (GMIC le meilleur)</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    gmic_wins  <span class="op">=</span> <span class="bu">sorted</span>(cancer_idx, key<span class="op">=</span><span class="kw">lambda</span> i: <span class="op">-</span>diff[i])[:<span class="dv">1</span>]</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># ResNet18 &gt;&gt; GMIC  (ResNet18 le meilleur)</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>    resnet_wins <span class="op">=</span> <span class="bu">sorted</span>(cancer_idx, key<span class="op">=</span><span class="kw">lambda</span> i: diff[i])[:<span class="dv">1</span>]</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Désaccord maximal (abs), peu importe la direction</span></span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    all_idx <span class="op">=</span> <span class="bu">sorted</span>(<span class="bu">range</span>(<span class="bu">len</span>(val_exams)), key<span class="op">=</span><span class="kw">lambda</span> i: <span class="op">-</span><span class="bu">abs</span>(diff[i]))</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>    big_disagree <span class="op">=</span> [i <span class="cf">for</span> i <span class="kw">in</span> all_idx</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">if</span> i <span class="kw">not</span> <span class="kw">in</span> gmic_wins <span class="kw">and</span> i <span class="kw">not</span> <span class="kw">in</span> resnet_wins][:<span class="dv">1</span>]</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>    cases <span class="op">=</span> (</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>        [(i, <span class="st">"GMIC &gt;&gt; ResNet18</span><span class="ch">\n</span><span class="st">(cancer raté par ResNet18)"</span>)  <span class="cf">for</span> i <span class="kw">in</span> gmic_wins]</span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>        <span class="op">+</span> [(i, <span class="st">"ResNet18 &gt;&gt; GMIC</span><span class="ch">\n</span><span class="st">(cancer raté par GMIC)"</span>)    <span class="cf">for</span> i <span class="kw">in</span> resnet_wins]</span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>        <span class="op">+</span> [(i, <span class="st">"Désaccord fort"</span>)                              <span class="cf">for</span> i <span class="kw">in</span> big_disagree]</span>
+<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a>    fig, axes <span class="op">=</span> plt.subplots(<span class="dv">1</span>, <span class="bu">len</span>(cases), figsize<span class="op">=</span>(<span class="dv">5</span> <span class="op">*</span> <span class="bu">len</span>(cases), <span class="dv">5</span>))</span>
+<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="bu">len</span>(cases) <span class="op">==</span> <span class="dv">1</span>:</span>
+<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a>        axes <span class="op">=</span> [axes]</span>
+<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> ax, (idx, caption) <span class="kw">in</span> <span class="bu">zip</span>(axes, cases):</span>
+<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a>        exam <span class="op">=</span> val_exams[idx]</span>
+<span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a>        img_path <span class="op">=</span> _first_lccc(exam)</span>
+<span id="cb15-28"><a href="#cb15-28" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> img_path:</span>
+<span id="cb15-29"><a href="#cb15-29" aria-hidden="true" tabindex="-1"></a>            ax.imshow(imageio.imread(img_path), cmap<span class="op">=</span><span class="st">"gray"</span>, aspect<span class="op">=</span><span class="st">"auto"</span>)</span>
+<span id="cb15-30"><a href="#cb15-30" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span>:</span>
+<span id="cb15-31"><a href="#cb15-31" aria-hidden="true" tabindex="-1"></a>            ax.text(<span class="fl">0.5</span>, <span class="fl">0.5</span>, <span class="st">"Image</span><span class="ch">\n</span><span class="st">indisponible"</span>,</span>
+<span id="cb15-32"><a href="#cb15-32" aria-hidden="true" tabindex="-1"></a>                    ha<span class="op">=</span><span class="st">"center"</span>, va<span class="op">=</span><span class="st">"center"</span>, transform<span class="op">=</span>ax.transAxes)</span>
+<span id="cb15-33"><a href="#cb15-33" aria-hidden="true" tabindex="-1"></a>        lbl <span class="op">=</span> <span class="st">"CANCER"</span> <span class="cf">if</span> exam_labels[idx] <span class="op">==</span> <span class="dv">1</span> <span class="cf">else</span> <span class="st">"SAIN"</span></span>
+<span id="cb15-34"><a href="#cb15-34" aria-hidden="true" tabindex="-1"></a>        ax.set_title(</span>
+<span id="cb15-35"><a href="#cb15-35" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"</span><span class="sc">{</span>caption<span class="sc">}</span><span class="ch">\n</span><span class="ss">"</span></span>
+<span id="cb15-36"><a href="#cb15-36" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"Label : </span><span class="sc">{</span>lbl<span class="sc">}</span><span class="ch">\n</span><span class="ss">"</span></span>
+<span id="cb15-37"><a href="#cb15-37" aria-hidden="true" tabindex="-1"></a>            <span class="ss">f"ResNet18 : </span><span class="sc">{</span>resnet_exam_scores[idx]<span class="sc">:.3f}</span><span class="ss">  |  GMIC : </span><span class="sc">{</span>gmic_exam_scores[idx]<span class="sc">:.3f}</span><span class="ss">"</span>,</span>
+<span id="cb15-38"><a href="#cb15-38" aria-hidden="true" tabindex="-1"></a>            fontsize<span class="op">=</span><span class="dv">9</span>,</span>
+<span id="cb15-39"><a href="#cb15-39" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb15-40"><a href="#cb15-40" aria-hidden="true" tabindex="-1"></a>        ax.axis(<span class="st">"off"</span>)</span>
+<span id="cb15-41"><a href="#cb15-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-42"><a href="#cb15-42" aria-hidden="true" tabindex="-1"></a>    plt.suptitle(<span class="st">"Vue L-CC — exemples de désaccords (val set)"</span>, fontsize<span class="op">=</span><span class="dv">12</span>)</span>
+<span id="cb15-43"><a href="#cb15-43" aria-hidden="true" tabindex="-1"></a>    plt.tight_layout()</span>
+<span id="cb15-44"><a href="#cb15-44" aria-hidden="true" tabindex="-1"></a>    plt.show()</span>
+<span id="cb15-45"><a href="#cb15-45" aria-hidden="true" tabindex="-1"></a><span class="cf">else</span>:</span>
+<span id="cb15-46"><a href="#cb15-46" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(<span class="ss">f"Trop peu de cas cancer dans le val set (</span><span class="sc">{</span><span class="bu">len</span>(cancer_idx)<span class="sc">}</span><span class="ss">) pour afficher 3 exemples."</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</details>
+<div class="cell-output cell-output-display">
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="rsna_comparison_files/figure-html/cell-11-output-1.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">Trois cas où les modèles divergent — vue L-CC avec scores annotés</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="partie-v-conclusion" class="level1">
+<h1>Partie V — Conclusion</h1>
+<div class="cell" data-execution_count="11">
+<div class="cell-output cell-output-stdout">
+<pre><code>AUC ResNet18 : 0.5963
+AUC GMIC     : 0.7452
+Écart        : +0.1489  → GMIC gagne</code></pre>
+</div>
+</div>
+<section id="pourquoi-gmic-fait-généralement-mieux" class="level2">
+<h2 class="anchored" data-anchor-id="pourquoi-gmic-fait-généralement-mieux">Pourquoi GMIC fait (généralement) mieux</h2>
+<p><strong>Pré-entraînement domaine</strong> — c’est le facteur principal. Le backbone GMIC a été optimisé sur des centaines de milliers de mammographies NYU. Il <em>reconnaît</em> les microcalcifications, les masses, les asymétries de densité. ResNet18 ImageNet connaît des chats et des bus ; le transfert vers les niveaux de gris mammographiques est partiel.</p>
+<p><strong>Architecture spécialisée</strong> — la saliency map + sélection des K=6 patches permet à GMIC de <em>zoomer</em> sur les zones suspectes à résolution native (256×256 patches extraits d’une image 2944×1920). ResNet18 voit une image 512×512 compressée.</p>
+</section>
+<section id="ce-quil-faudrait-pour-que-resnet18-soit-compétitif" class="level2">
+<h2 class="anchored" data-anchor-id="ce-quil-faudrait-pour-que-resnet18-soit-compétitif">Ce qu’il faudrait pour que ResNet18 soit compétitif</h2>
+<ul>
+<li><strong>Plus de données</strong> — avec 5 000+ cas cancer en train, ResNet18 from-scratch ou fine-tuné ImageNet approche GMIC. C’est la conclusion principale de l’article GMIC.</li>
+<li><strong>Pré-entraînement radiologique</strong> — <a href="https://github.com/BMEII-AI/RadImageNet">RadImageNet</a> (ResNet50 entraîné sur 1.35 M images radio) serait plus proche que ImageNet, sans nécessiter l’architecture GMIC.</li>
+<li><strong>Architecture multi-instance</strong> — adopter la logique MIL de GMIC (K patches + attention) sur un backbone ResNet serait un compromis intéressant.</li>
+</ul>
+</section>
+<section id="pour-aller-plus-loin" class="level2">
+<h2 class="anchored" data-anchor-id="pour-aller-plus-loin">Pour aller plus loin</h2>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: left;">Notebook</th>
+<th style="text-align: left;">Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: left;"><a href="resnet18_training.qmd">resnet18_training.qmd</a></td>
+<td style="text-align: left;">Courbes d’entraînement ResNet18 détaillées</td>
+</tr>
+<tr class="even">
+<td style="text-align: left;"><a href="pipeline_showcase_gmic.qmd">pipeline_showcase_gmic.qmd</a></td>
+<td style="text-align: left;">GMIC pas à pas sur une image (saliency, patches, attention)</td>
+</tr>
+<tr class="odd">
+<td style="text-align: left;"><a href="pipeline_scratch_gmic.qmd">pipeline_scratch_gmic.qmd</a></td>
+<td style="text-align: left;">GMIC reconstruit en <code>nn.Module</code> standards — remapping des clés NYU</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>

@@ -1,0 +1,31 @@
+name: CI
+
+# Tests sur checkout propre. NB : les poids GMIC/ (290 Mo) et data/ sont
+# gitignorés, donc absents ici → on ne peut PAS builder l'image Docker en CI
+# (le `COPY GMIC/models` échouerait). Le smoke-test Docker complet se lance en
+# local avec `make docker-test`, là où les poids sont présents.
+# La CI se concentre donc sur les tests unitaires (rapides, sans torch ni poids).
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests-unitaires:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Installer les dépendances minimales des tests
+        # Les tests n'utilisent que cv2 + numpy + pytest (pas torch).
+        run: uv pip install --system opencv-python-headless numpy pytest
+
+      - name: Tests unitaires (validate_input)
+        run: python -m pytest scripts/test_validate_input.py -v

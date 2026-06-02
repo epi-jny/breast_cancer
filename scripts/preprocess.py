@@ -27,9 +27,9 @@ Le dossier de sortie contiendra :
   <output-dir>/cropped_exam_list.pkl
 
 Usage :
-  python scripts/preprocess.py --input-dir data/demo --output-dir preprocess_image/demo
-  python scripts/preprocess.py --input-dir data/extract_dataset --output-dir preprocess_image/dicom
-  python scripts/preprocess.py --input-dir data/demo --output-dir preprocess_image/demo --force-crop
+  python scripts/preprocess.py --input-dir data/raw/sample --output-dir data/preprocess_image/sample
+  python scripts/preprocess.py --input-dir data/raw/extract_dataset3 --output-dir data/preprocess_image/extract_dataset3
+  python scripts/preprocess.py --input-dir data/raw/sample --output-dir data/preprocess_image/sample --force-crop
 """
 
 import os
@@ -38,7 +38,6 @@ import csv
 import glob
 import pickle
 import shutil
-import random
 import zipfile
 import argparse
 
@@ -258,22 +257,26 @@ def run_crop(png_dir: str, cropped_dir: str, pkl_raw: str, pkl_cropped: str, num
 
 # ── Étape 4 : Resize 2944×1920 + normalisation ───────────────────────────────
 
-def resize_all(cropped_dir: str, pkl_cropped: str):
+def resize_all(cropped_dir: str, pkl_cropped: str, output_dir: str = None):
     print("\n" + "=" * 60)
     print(f"ETAPE 4 : Redimensionnement a {GMIC_H}x{GMIC_W} + normalisation [0, 255]")
     print("=" * 60)
+    if output_dir is None:
+        output_dir = cropped_dir
 
     import src.utilities.pickling as pickling
     import src.utilities.data_handling as data_handling
 
     exam_list = pickling.unpickle_from_file(pkl_cropped)
-    image_list = data_handling.unpack_exam_into_images(exam_list, cropped=True)
+
+    # Scan tous les PNG du dossier — pas seulement ceux dans le pkl,
+    # car data.pkl peut référencer plus d'images que cropped_exam_list.pkl.
+    all_pngs = glob.glob(os.path.join(cropped_dir, "**", "*.png"), recursive=True)
 
     scale_map = {}
     resized, skipped, normalized = 0, 0, 0
 
-    for datum in tqdm(image_list, desc="Resize"):
-        path = os.path.join(cropped_dir, datum["short_file_path"] + ".png")
+    for path in tqdm(all_pngs, desc="Resize"):
         img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         if img is None:
             continue
@@ -287,7 +290,11 @@ def resize_all(cropped_dir: str, pkl_cropped: str):
             skipped += 1
             continue
 
-        scale_map[datum["short_file_path"]] = (GMIC_H / h, GMIC_W / w)
+        # short_file_path = "patient_id/image_id" (sans extension)
+        rel = os.path.relpath(path, cropped_dir)
+        sfp = rel[:-4] if rel.endswith(".png") else rel
+        scale_map[sfp] = (GMIC_H / h, GMIC_W / w)
+
         interp = cv2.INTER_AREA if (h > GMIC_H or w > GMIC_W) else cv2.INTER_LINEAR
         img_resized = cv2.resize(img, (GMIC_W, GMIC_H), interpolation=interp)
 
@@ -354,6 +361,8 @@ def resize_all(cropped_dir: str, pkl_cropped: str):
         pickling.pickle_to_file(pkl_cropped, exam_list)
         print(f"PKL mis a jour : {updated} images avec coordonnees recalculees")
 
+    open(os.path.join(output_dir, _RESIZE_MARKER), "w").close()
+
 
 def _normalize_uint8(img):
     img_f = img.astype(np.float32)
@@ -365,6 +374,7 @@ def _normalize_uint8(img):
 
 # ── Étape 5 : Flip horizontal des vues droites ───────────────────────────────
 
+_RESIZE_MARKER = ".resize_done"
 _FLIP_MARKER = ".right_views_flipped"
 _VIEWS_RIGHT = {"R-CC", "R-MLO"}
 
@@ -443,34 +453,10 @@ def is_crop_done(cropped_dir: str, pkl_cropped: str) -> bool:
     return _count_pngs(cropped_dir) > 0
 
 
-def is_resize_done(cropped_dir: str, pkl_cropped: str) -> bool:
-    if not os.path.exists(cropped_dir) or not os.path.exists(pkl_cropped):
-        return False
-    pngs = glob.glob(os.path.join(cropped_dir, "**", "*.png"), recursive=True)
-    if not pngs:
-        return False
-    sample = random.sample(pngs, min(20, len(pngs)))
-    for p in sample:
-        img = cv2.imread(p, cv2.IMREAD_UNCHANGED)
-        if img is None:
-            continue
-        h, w = img.shape[:2]
-        if h != GMIC_H or w != GMIC_W:
-            return False
-        if img.max() > 255 or img.dtype != np.uint8:
-            return False
-    with open(pkl_cropped, "rb") as f:
-        exams = pickle.load(f)
-    import src.utilities.data_handling as dh
-    images = dh.unpack_exam_into_images(exams, cropped=True)
-    for d in random.sample(images, min(20, len(images))):
-        rp = d.get("rightmost_points")
-        if rp is not None and int(rp[1]) > GMIC_W:
-            return False
-        bp = d.get("bottommost_points")
-        if bp is not None and int(bp[0]) > GMIC_H:
-            return False
-    return True
+def is_resize_done(cropped_dir: str, pkl_cropped: str, output_dir: str = None) -> bool:
+    if output_dir is None:
+        output_dir = cropped_dir
+    return os.path.exists(os.path.join(output_dir, _RESIZE_MARKER))
 
 
 def copy_pkl_as_final(pkl_cropped: str, pkl_final: str):
@@ -491,17 +477,18 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemples :
-  python scripts/preprocess.py --input-dir data/demo --output-dir preprocess_image/demo
-  python scripts/preprocess.py --input-dir data/extract_dataset --output-dir preprocess_image/dicom
-  python scripts/preprocess.py --input-dir data/demo --output-dir preprocess_image/demo --force-crop
+  python scripts/preprocess.py --input-dir data/raw/sample --output-dir data/preprocess_image/sample
+  python scripts/preprocess.py --input-dir data/raw/extract_dataset3 --output-dir data/preprocess_image/extract_dataset3
+  python scripts/preprocess.py --input-dir data/raw/sample --output-dir data/preprocess_image/sample --force-crop
         """,
     )
-    parser.add_argument("--input-dir", required=True,
-                        help="Dossier contenant les images (DICOM ou PNG)")
+    parser.add_argument("--input-dir", default=None,
+                        help="Dossier contenant les images (DICOM ou PNG). "
+                             "Optionnel si --force-resize sans --force-crop.")
     parser.add_argument("--csv", default=None,
                         help="Chemin vers le CSV. Par defaut : <input-dir>/train_subset_test.csv ou train.csv")
     parser.add_argument("--output-dir", default=None,
-                        help="Dossier de sortie. Par defaut : <projet>/preprocess_image/")
+                        help="Dossier de sortie. Par defaut : <projet>/data/preprocess_image/")
     parser.add_argument("--format", choices=["dicom", "png", "auto"], default="auto",
                         help="Format des images d'entree (defaut: auto-detection)")
     parser.add_argument("--force-crop", action="store_true",
@@ -512,23 +499,9 @@ Exemples :
                         help="Nombre de processes pour crop_mammogram (defaut: 4)")
     args = parser.parse_args()
 
-    input_dir = os.path.abspath(args.input_dir)
-    if not os.path.isdir(input_dir):
-        print(f"Erreur : dossier introuvable : {input_dir}")
-        sys.exit(1)
-
-    csv_path = args.csv
-    if csv_path is None:
-        csv_path = os.path.join(input_dir, "train_subset_test.csv")
-        if not os.path.exists(csv_path):
-            csv_path = os.path.join(input_dir, "train.csv")
-    if not os.path.exists(csv_path):
-        print(f"Erreur : CSV introuvable : {csv_path}")
-        sys.exit(1)
-
     output_dir = args.output_dir
     if output_dir is None:
-        output_dir = os.path.join(PROJECT_DIR, "preprocess_image")
+        output_dir = os.path.join(PROJECT_DIR, "data", "preprocess_image")
     output_dir = os.path.abspath(output_dir)
 
     png_dir = os.path.join(output_dir, "png_images")
@@ -539,31 +512,53 @@ Exemples :
 
     os.makedirs(output_dir, exist_ok=True)
 
-    fmt = args.format
-    if fmt == "auto":
-        fmt = detect_format(input_dir)
-        if fmt == "unknown":
-            print("Erreur : impossible de detecter le format des images.")
-            print("Specifiez --format dicom ou --format png")
+    # --force-resize sans --force-crop : les données brutes ne sont pas nécessaires
+    # si le crop est déjà fait (cropped_exam_list.pkl présent).
+    resize_only = args.force_resize and not args.force_crop and is_crop_done(cropped_dir, pkl_cropped)
+
+    if not resize_only:
+        if args.input_dir is None:
+            print("Erreur : --input-dir est requis sauf si --force-resize avec crop deja effectue.")
             sys.exit(1)
-    print(f"Format detecte : {fmt.upper()}")
 
-    if fmt == "dicom":
-        raw_dir = os.path.join(input_dir, "train_images")
-        if not os.path.isdir(raw_dir):
-            raw_dir = input_dir
-        os.makedirs(png_dir, exist_ok=True)
-        convert_dcm_to_png(raw_dir, png_dir, csv_path)
-        source_png_dir = png_dir
-    else:
-        train_images = os.path.join(input_dir, "train_images")
-        source_png_dir = train_images if os.path.isdir(train_images) else input_dir
+        input_dir = os.path.abspath(args.input_dir)
+        if not os.path.isdir(input_dir):
+            print(f"Erreur : dossier introuvable : {input_dir}")
+            sys.exit(1)
 
-    # Sauvegarder le dossier source pour que le notebook puisse retrouver les images originales
-    with open(os.path.join(output_dir, "source_dir.txt"), "w") as _f:
-        _f.write(source_png_dir)
+        csv_path = args.csv
+        if csv_path is None:
+            csv_path = os.path.join(input_dir, "train_subset_test.csv")
+            if not os.path.exists(csv_path):
+                csv_path = os.path.join(input_dir, "train.csv")
+        if not os.path.exists(csv_path):
+            print(f"Erreur : CSV introuvable : {csv_path}")
+            sys.exit(1)
 
-    build_exam_pkl(csv_path, source_png_dir, pkl_raw)
+        fmt = args.format
+        if fmt == "auto":
+            fmt = detect_format(input_dir)
+            if fmt == "unknown":
+                print("Erreur : impossible de detecter le format des images.")
+                print("Specifiez --format dicom ou --format png")
+                sys.exit(1)
+        print(f"Format detecte : {fmt.upper()}")
+
+        if fmt == "dicom":
+            raw_dir = os.path.join(input_dir, "train_images")
+            if not os.path.isdir(raw_dir):
+                raw_dir = input_dir
+            os.makedirs(png_dir, exist_ok=True)
+            convert_dcm_to_png(raw_dir, png_dir, csv_path)
+            source_png_dir = png_dir
+        else:
+            train_images = os.path.join(input_dir, "train_images")
+            source_png_dir = train_images if os.path.isdir(train_images) else input_dir
+
+        with open(os.path.join(output_dir, "source_dir.txt"), "w") as _f:
+            _f.write(source_png_dir)
+
+        build_exam_pkl(csv_path, source_png_dir, pkl_raw)
 
     if args.force_crop:
         # Nouveau crop → les images sont fraîches et non retournées : réinitialiser le marqueur
@@ -583,11 +578,11 @@ Exemples :
     if args.force_resize:
         # Resize en place : l'orientation des images ne change pas.
         # Ne pas toucher au marqueur de flip pour eviter un double flip.
-        resize_all(cropped_dir, pkl_cropped)
-    elif is_resize_done(cropped_dir, pkl_cropped):
-        print(f"[AUTO] Resize : images deja en {GMIC_H}x{GMIC_W} uint8 -> SKIP")
+        resize_all(cropped_dir, pkl_cropped, output_dir)
+    elif is_resize_done(cropped_dir, pkl_cropped, output_dir):
+        print(f"[AUTO] Resize : deja effectue -> SKIP")
     else:
-        resize_all(cropped_dir, pkl_cropped)
+        resize_all(cropped_dir, pkl_cropped, output_dir)
 
     if is_flip_done(output_dir):
         print(f"[AUTO] Flip vues droites : deja applique -> SKIP")

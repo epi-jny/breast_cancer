@@ -1,0 +1,77 @@
+{
+  "name": "cancer__gmic-nyu-sample1__20260529-132720",
+  "run_kind": "gmic_evaluation",
+  "description": "sgp_set construit à partir des prédictions GMIC (modèle pré-entraîné NYU, AUCUN fine-tuning ici) — pas de checkpoint maison. La colonne `p` = malignant_pred.",
+  "target": "cancer",
+  "dataset_name": "RSNA Breast Cancer Detection (2022, Kaggle)",
+  "dataset_kind": "rsna",
+  "model_tag": "gmic-nyu-sample1",
+  "training_timestamp": "nyu-pretrained",
+  "abstention_diagnostic": {
+    "usable_for_abstention": false,
+    "pathology_flags": [
+      "pred_collapse(pred_positive_rate=0.013)"
+    ],
+    "pred_positive_rate_global": 0.0127,
+    "kappa_spread": 0.4948,
+    "accuracy_top10pct_kappa": 0.9952,
+    "accuracy_bot10pct_kappa": 0.8558
+  },
+  "kappa_min": 0.5017,
+  "kappa_max": 0.9965,
+  "columns": {
+    "p": "malignant_pred — proba GMIC de malignité (classe positive)",
+    "kappa": "softmax response = max(p, 1-p) — confiance, sert de seuil d'abstention",
+    "y_pred": "1 si p >= 0.5",
+    "y_true": "malignant_label — vérité terrain (1 = cancer)",
+    "split": "cal/test aléatoire 75/25 (seed 42)"
+  },
+  "inference": {
+    "timestamp": "2026-05-29 14:10:11",
+    "source_predictions": "data/preprocess_image/rsna_output/predictions.csv",
+    "predictions_mtime": "2026-05-29 13:27:20",
+    "script": "scripts/inference.py",
+    "model_index": "1",
+    "image_dir": "data/preprocess_image/rsna_output",
+    "dataset_kind": "rsna"
+  },
+  "checkpoint": {
+    "path": "GMIC/models/sample_model_1.p",
+    "arch": "ScratchGMIC (K=6, crop 256x256, percent_t=0.02, num_classes=2)",
+    "best_auc": null,
+    "note": "poids NYU pré-entraînés, non re-entraînés sur RSNA"
+  },
+  "dataset": {
+    "n_total": 8399,
+    "split_sizes": {
+      "cal": 6264,
+      "test": 2135
+    }
+  },
+  "baselines": {
+    "cal": {
+      "n": 6264,
+      "positives": 136,
+      "base_rate": 0.0217,
+      "accuracy_at_0.5": 0.9757,
+      "pred_positive_rate": 0.0131,
+      "p_mean": 0.0621,
+      "p_std": 0.1006,
+      "kappa_mean": 0.9419,
+      "kappa_min": 0.5017,
+      "kappa_max": 0.9965
+    },
+    "test": {
+      "n": 2135,
+      "positives": 46,
+      "base_rate": 0.0215,
+      "accuracy_at_0.5": 0.9724,
+      "pred_positive_rate": 0.0117,
+      "p_mean": 0.0635,
+      "p_std": 0.0976,
+      "kappa_mean": 0.9391,
+      "kappa_min": 0.5043,
+      "kappa_max": 0.9963
+    }
+  }
+}

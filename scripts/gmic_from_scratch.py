@@ -481,7 +481,7 @@ def _demo() -> None:
 
     img_path = os.path.join(
         _PROJECT_ROOT,
-        "preprocess_image/demo/cropped_images/10226/530620473.png",
+        "data/preprocess_image/sample_docker/cropped_images/10226/530620473.png",
     )
     img = imageio.imread(img_path).astype(np.float32)
     img = (img - img.mean()) / max(img.std(), 1e-5)

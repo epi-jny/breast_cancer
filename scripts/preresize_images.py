@@ -28,8 +28,8 @@ from tqdm import tqdm
 def main() -> None:
     script_dir = Path(__file__).resolve().parent
     project_root = script_dir.parent
-    default_src = project_root / "preprocess_image" / "rsna_output" / "cropped_images"
-    default_dst = project_root / "preprocess_image" / "rsna_output" / "cropped_512"
+    default_src = project_root / "data" / "preprocess_image" / "rsna_output" / "cropped_images"
+    default_dst = project_root / "data" / "preprocess_image" / "rsna_output" / "cropped_512"
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--src", type=Path, default=default_src,

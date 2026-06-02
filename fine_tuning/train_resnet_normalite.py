@@ -3,9 +3,9 @@ Entraînement ResNet18 sur les mammographies RSNA — cible "normalité".
 
 Variante du script `train_resnet.py` : au lieu de prédire `cancer` (très déséquilibré,
 ~30 positifs sur le train), on prédit un label "anormal" plus permissif issu de
-`data/rsna_images/train_subset.csv`.
+`data/raw/rsna_images/train_subset.csv`.
 
-Règle (cf. data/rsna_images/creation_column.py) :
+Règle (cf. data/raw/rsna_images/creation_column.py) :
     anormal = 1 si (cancer==1) OR (biopsy==1) OR (difficult_negative_case==True)
 
 Labels lus par image (patient_id, image_id) — plus fin que l'agrégation OR-par-exam
@@ -49,7 +49,9 @@ from fine_tuning.dataset import load_and_split
 from fine_tuning.run_metadata import (
     format_duration,
     get_git_commit,
+    load_last_checkpoint,
     make_run_dir,
+    save_last_checkpoint,
     write_args_json,
     write_run_readme,
 )
@@ -82,7 +84,7 @@ def _load_normalite_labels() -> dict[tuple[int, int], int]:
     if not NORMALITE_CSV.exists():
         raise FileNotFoundError(
             f"CSV introuvable : {NORMALITE_CSV}\n"
-            "Vérifie que data/rsna_images/train_subset.csv est bien présent."
+            "Vérifie que data/raw/rsna_images/train_subset.csv est bien présent."
         )
     df = pd.read_csv(NORMALITE_CSV)
     anormal = (
@@ -140,21 +142,11 @@ class ImageDataset(Dataset):
         img_size: int = IMG_SIZE,
     ):
         self.entries = entries
-        # Augmentation renforcée : multiplie virtuellement les positifs.
-        # RandomAffine combine rotation + translation + zoom léger.
-        aug = (
-            [
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomAffine(
-                    degrees=10,
-                    translate=(0.05, 0.05),
-                    scale=(0.95, 1.05),
-                ),
-                transforms.ColorJitter(brightness=0.25, contrast=0.25),
-            ]
-            if augment
-            else []
-        )
+        # Seul flip horizontal : un sein gauche flippé reste un sein anatomiquement valide
+        # et le label normalité est latéralité-agnostique. RandomAffine et ColorJitter
+        # avaient été ajoutés par défaut "parce que c'est courant" → retirés tant qu'on
+        # n'a pas de preuve qu'ils aident sur ce dataset (à valider par tests préalables).
+        aug = [transforms.RandomHorizontalFlip()] if augment else []
         self.transform = transforms.Compose(
             [
                 transforms.Grayscale(num_output_channels=3),
@@ -240,14 +232,25 @@ def train(
     device: str = DEVICE,
     patience: int = EARLY_STOP_PATIENCE,
     pretrained: bool = False,
+    resume_from: Path | None = None,
 ) -> None:
     torch.manual_seed(RANDOM_SEED)
     np.random.seed(RANDOM_SEED)
 
     # Dossier de run : runs/{target}/{model_tag}/{timestamp}/
     model_tag = "resnet18_pretrained" if pretrained else "resnet18_scratch"
-    run_dir   = make_run_dir(RUNS_DIR, TARGET, model_tag)
-    ckpt_path = run_dir / "best.pt"
+    if resume_from is not None:
+        run_dir = Path(resume_from)
+        if not (run_dir / "last.pt").exists():
+            raise FileNotFoundError(
+                f"--resume : aucun last.pt dans {run_dir}\n"
+                "Le run a peut-être été interrompu avant la fin du 1er epoch."
+            )
+        print(f"--resume : reprise depuis {run_dir}")
+    else:
+        run_dir = make_run_dir(RUNS_DIR, TARGET, model_tag)
+    ckpt_path      = run_dir / "best.pt"
+    ckpt_last_path = run_dir / "last.pt"
     logs_path = run_dir / "logs.json"
     roc_path  = run_dir / "roc.png"
     # Le cache des stats reste global (dépend uniquement de img_size).
@@ -343,7 +346,7 @@ def train(
         "epochs": epochs, "batch_size": batch_size, "lr": lr,
         "weight_decay": weight_decay, "img_size": img_size, "device": device,
         "warmup_epochs": warmup_iters, "patience": patience,
-        "augmentation": "hflip + affine(rot=10, trans=5%, scale=±5%) + jitter(0.25)",
+        "augmentation": "hflip uniquement",
         "sampler": "WeightedRandomSampler (équilibre normal / anormal)",
         "num_workers": NUM_WORKERS,
         # Contexte
@@ -357,14 +360,27 @@ def train(
         "best_auc": None,
         "best_epoch": None,
     }
-    write_args_json(run_dir, hyperparams)
-    write_run_readme(run_dir, hyperparams)
-    logs = {"hyperparams": hyperparams, "epochs": []}
+    if resume_from is None:
+        write_args_json(run_dir, hyperparams)
+        write_run_readme(run_dir, hyperparams)
+        logs = {"hyperparams": hyperparams, "epochs": []}
+    else:
+        logs = json.loads(logs_path.read_text()) if logs_path.exists() else {"hyperparams": hyperparams, "epochs": []}
 
     best_auc = 0.0
     best_epoch = 0
     epochs_since_best = 0
-    for epoch in range(1, epochs + 1):
+    start_epoch = 1
+    if resume_from is not None:
+        state = load_last_checkpoint(ckpt_last_path, model, optimizer, scheduler, device)
+        start_epoch        = state["start_epoch"]
+        best_auc           = state["best_auc"]
+        best_epoch         = state["best_epoch"]
+        epochs_since_best  = state["epochs_since_best"]
+        print(f"--resume : reprise à l'epoch {start_epoch}/{epochs}  "
+              f"(best_auc={best_auc:.4f} à epoch {best_epoch})")
+
+    for epoch in range(start_epoch, epochs + 1):
         # — train
         model.train()
         train_loss = 0.0
@@ -428,6 +444,12 @@ def train(
             "is_best": is_best,
         })
         logs_path.write_text(json.dumps(logs, indent=2))
+
+        # Snapshot de reprise — sauvé après CHAQUE epoch (best ou pas).
+        save_last_checkpoint(
+            ckpt_last_path, epoch, model, optimizer, scheduler,
+            best_auc, best_epoch, epochs_since_best,
+        )
 
         flag = " ← best" if is_best else ""
         print(
@@ -493,6 +515,7 @@ if __name__ == "__main__":
     parser.add_argument("--device",       type=str,   default=DEVICE,        help=f"Device pytorch (défaut: {DEVICE})")
     parser.add_argument("--patience",     type=int,   default=EARLY_STOP_PATIENCE, help=f"Epochs sans amélioration avant early stop (défaut: {EARLY_STOP_PATIENCE})")
     parser.add_argument("--pretrained",   action="store_true",               help="Charge les poids ImageNet (fine-tuning) au lieu de from-scratch")
+    parser.add_argument("--resume",       type=str,   default=None,          help="Chemin d'un run interrompu à reprendre (ex: fine_tuning/checkpoints/runs/normalite/resnet18_pretrained/20260427-...)")
     args = parser.parse_args()
 
     # Si --lr non fourni : LR_PRETRAINED en fine-tuning, LEARNING_RATE sinon.
@@ -507,4 +530,5 @@ if __name__ == "__main__":
         device=args.device,
         patience=args.patience,
         pretrained=args.pretrained,
+        resume_from=Path(args.resume) if args.resume else None,
     )
