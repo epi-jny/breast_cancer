@@ -12,21 +12,22 @@ auto-détecté à partir du checkpoint et de son `args.json` voisin :
   - stats         : grayscale (RSNA 1ch) ou rgb (RSNA 3ch dupliqués / CIFAR natif)
   - img_size      : lu dans args.json (512 pour RSNA, 96 par défaut pour CIFAR)
   - positive_class: pour CIFAR uniquement, lu dans args.json (0..9)
-  - run_name      : <target>__<model_tag>__<timestamp>
-                    ex: normalite__smallcnn-focal__20260519-093143
-                    ex: cifar_airplane_vs_all__smallcnn-bce-pos-weight__20260522-100539
+  - run_id        : <target>/<model_tag>/<timestamp>  (arborescence imbriquée,
+                    calquée sur fine_tuning/checkpoints/runs/)
+                    ex: normalite/smallcnn-focal/20260519-093143
+                    ex: cifar_airplane_vs_all/smallcnn-bce-pos-weight/20260522-100539
 
 Pour chaque checkpoint :
-  - Si `runs/<run_name>/sgp_set.pkl` existe → skip (sauf --force)
+  - Si `runs/<run_id>/sgp_set.pkl` existe → skip (sauf --force)
   - Sinon → inférence sur le set cal+test, écrit `sgp_set.{pkl,csv}` + `meta.json`
 
 Le lien `runs/latest` pointe toujours vers le dernier run écrit.
 
 Usage:
-    python -m abstention_module.infer                                # toute la config
-    python -m abstention_module.infer --only normalite__smallcnn-focal  # une seule
-    python -m abstention_module.infer --force                        # réécrit tout
-    python -m abstention_module.infer --ckpt <path>                  # mode ad-hoc
+    python -m abstention_module.infer                                  # toute la config
+    python -m abstention_module.infer --only normalite/smallcnn-focal  # une seule
+    python -m abstention_module.infer --force                          # réécrit tout
+    python -m abstention_module.infer --ckpt <path>                    # mode ad-hoc
 """
 
 from __future__ import annotations
@@ -58,6 +59,9 @@ from abstention_module.dataset import (
 
 CONFIG_PATH = Path(__file__).parent / "runs_config.yaml"
 RUNS_DIR = Path(__file__).parent / "runs"
+
+# Noms des classes density (1-vs-all). Sert au libellé du run (model_tag) et au meta.
+DENSITY_CLASS_NAMES = ["A", "B", "C", "D"]
 
 
 class SmallCNN(nn.Module):
@@ -142,20 +146,34 @@ def _detect_dataset(ckpt_path: Path) -> str:
     return "rsna"
 
 
-def _derive_run_name(ckpt_path: Path) -> str:
-    """Nom de run au format <target>__<model_tag>__<timestamp>.
+def _derive_run_id(ckpt_path: Path) -> tuple[str, str, str]:
+    """Composantes (target, model_tag, timestamp) du run, calquées sur la
+    structure des checkpoints fine_tuning .../runs/<target>/<model_tag>/<timestamp>/best.pt.
 
     Lit le `target` depuis args.json (plus fiable) si dispo, sinon fallback sur
-    la structure de chemin .../runs/<target>/<model_tag>/<timestamp>/best.pt.
+    le segment de chemin correspondant.
 
-    Ex: normalite__smallcnn-focal__20260519-093143
-        cifar_airplane_vs_all__smallcnn-bce-pos-weight__20260522-100539
+    Le run d'abstention reprend la même arborescence imbriquée :
+        runs/<target>/<model_tag>/<timestamp>/
+    Ex: runs/normalite/smallcnn-focal/20260519-093143
+        runs/cifar_airplane_vs_all/smallcnn-bce-pos-weight/20260522-100539
     """
     timestamp = ckpt_path.parent.name
     model_tag = ckpt_path.parent.parent.name
     args = _load_train_args(ckpt_path)
     target = args.get("target") or ckpt_path.parent.parent.parent.name
-    return f"{target}__{model_tag}__{timestamp}"
+    return target, model_tag, timestamp
+
+
+def _class_label(dataset_kind: str, positive_class: int) -> str:
+    """Étiquette lisible de la classe positive, suffixée au model_tag en multi-classe.
+
+    density → lettre de classe A/B/C/D (1-vs-all) ; sinon fallback générique 'posN'.
+    Ex: resnet18_pretrained-D  (au lieu de resnet18_pretrained-pos3).
+    """
+    if dataset_kind == "rsna_density" and 0 <= positive_class < len(DENSITY_CLASS_NAMES):
+        return DENSITY_CLASS_NAMES[positive_class]
+    return f"pos{positive_class}"
 
 
 # ─── Modèle + DataLoader ─────────────────────────────────────────────────────
@@ -207,7 +225,7 @@ def _build_loader_rsna_density(positive_class: int, batch_size: int, num_workers
         "stats_choice": "rgb",
         "img_size": 512,
         "positive_class": positive_class,
-        "positive_class_name": ["A", "B", "C", "D"][positive_class],
+        "positive_class_name": DENSITY_CLASS_NAMES[positive_class],
     }
     return loader, df.rename(columns={"normalite": "label"}), info
 
@@ -394,16 +412,15 @@ def process_checkpoint(ckpt: Path, force: bool, batch_size: int, num_workers: in
               f"(à mettre dans le YAML).")
         return "failed"
 
-    # Nom du run : pour multi-classe, ajouter -posN au model_tag
-    base_name = _derive_run_name(ckpt)
+    # Composantes du run : pour multi-classe, suffixer le model_tag par la classe
+    # positive (density → A/B/C/D ; fallback générique posN).
+    target_part, model_tag, ts = _derive_run_id(ckpt)
     if num_classes > 1:
-        # insert pos<N> dans le model_tag (segment du milieu)
-        target_part, model_tag, ts = base_name.split("__", 2)
-        name = f"{target_part}__{model_tag}-pos{positive_class}__{ts}"
-    else:
-        name = base_name
+        model_tag = f"{model_tag}-{_class_label(dataset_kind, positive_class)}"
 
-    out_dir = RUNS_DIR / name
+    # Arborescence imbriquée runs/<target>/<model_tag>/<timestamp>/ (cf. fine_tuning)
+    out_dir = RUNS_DIR / target_part / model_tag / ts
+    name = str(out_dir.relative_to(RUNS_DIR))   # id du run, ex "normalite/smallcnn/20260427-162128"
     sgp_path = out_dir / "sgp_set.pkl"
     meta_path = out_dir / "meta.json"
 
@@ -546,7 +563,7 @@ def main():
     entries = load_config(args.config)
     if args.only:
         entries = [(p, o) for p, o in entries
-                   if args.only in _derive_run_name(p if p.is_absolute() else PROJECT_ROOT / p)]
+                   if args.only in "/".join(_derive_run_id(p if p.is_absolute() else PROJECT_ROOT / p))]
         if not entries:
             print(f"Aucun checkpoint dont le nom contient {args.only!r}")
             return

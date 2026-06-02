@@ -23,8 +23,8 @@ Usage :
 from abstention_module.nb_setup import *
 
 # ── Config ───────────────────────────────────────────────────────────────────
-RUN_DIR = Path("abstention_module/runs/cancer__gmic-nyu-sample1__20260529-132720")
-#   abstention_module/runs/normalite__smallcnn__20260427-162128   # a du dropout (MCD OK)
+RUN_DIR = Path("abstention_module/runs/cancer/gmic-nyu-sample1/20260529-132720")
+#   abstention_module/runs/normalite/smallcnn/20260427-162128   # a du dropout (MCD OK)
 #   abstention_module/runs/latest
 if len(sys.argv) > 1:
     RUN_DIR = Path("abstention_module/runs") / sys.argv[1]

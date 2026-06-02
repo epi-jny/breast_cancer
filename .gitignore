@@ -15,6 +15,9 @@ GMIC/
 # ─── Modèles et checkpoints (trop lourds pour git) ──────────────────────────
 fine_tuning/checkpoints/
 
+# ─── Runs d'inférence GMIC (sorties, non versionnées) ───────────────────────
+inference/runs/
+
 # ─── Python ─────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc

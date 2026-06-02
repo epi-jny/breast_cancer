@@ -27,8 +27,19 @@ import pandas as pd
 RUNS_DIR = Path(__file__).parent / "runs"
 
 
+def _available_runs() -> list[str]:
+    """Ids des runs disponibles, au format imbriqué <target>/<model_tag>/<timestamp>.
+
+    Un run = un dossier contenant `meta.json` dans l'arborescence
+    runs/<target>/<model_tag>/<timestamp>/ (le symlink `latest` est exclu)."""
+    return sorted(
+        str(meta.parent.relative_to(RUNS_DIR))
+        for meta in RUNS_DIR.glob("*/*/*/meta.json")
+    )
+
+
 def _resolve_run_dir(run: str | None) -> Path:
-    """Retourne le dossier du run choisi (par nom) ou `latest` par défaut."""
+    """Retourne le dossier du run choisi (par id imbriqué) ou `latest` par défaut."""
     if run is None:
         latest = RUNS_DIR / "latest"
         if not latest.exists():
@@ -38,10 +49,9 @@ def _resolve_run_dir(run: str | None) -> Path:
         return latest.resolve()
     candidate = RUNS_DIR / run
     if not candidate.exists():
-        available = sorted(p.name for p in RUNS_DIR.iterdir() if p.is_dir() and p.name != "latest")
         raise FileNotFoundError(
             f"Run introuvable : {candidate}\n"
-            f"Runs disponibles : {available}"
+            f"Runs disponibles : {_available_runs()}"
         )
     return candidate
 
@@ -49,7 +59,8 @@ def _resolve_run_dir(run: str | None) -> Path:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", type=str, default=None,
-                    help="Nom du run dans abstention_module/runs/ (défaut: latest)")
+                    help="Id du run imbriqué <target>/<model_tag>/<timestamp> dans "
+                         "abstention_module/runs/ (défaut: latest)")
     ap.add_argument("--sgp", type=Path, default=None,
                     help="Mode ad-hoc : chemin direct vers un sgp_set.pkl (court-circuite --run)")
     ap.add_argument("--split", choices=["cal", "test", "all"], default="cal",
@@ -64,7 +75,8 @@ def main():
         run_dir = _resolve_run_dir(args.run)
         sgp_path = run_dir / "sgp_set.pkl"
         out_plot = run_dir / "accuracy_vs_sr_threshold.png"
-        print(f"Run : {run_dir.name}")
+        run_label = run_dir.relative_to(RUNS_DIR) if run_dir.is_relative_to(RUNS_DIR) else run_dir.name
+        print(f"Run : {run_label}")
 
     sgp = pd.read_pickle(sgp_path)
     if args.split != "all":
