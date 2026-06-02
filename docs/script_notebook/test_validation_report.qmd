@@ -29,8 +29,8 @@ def _find_root(start):
         cur = parent
 
 PROJECT_DIR = _find_root(os.getcwd())
-sys.path.insert(0, os.path.join(PROJECT_DIR, "scripts"))
-from validate_input import ValidationResult, check_image
+sys.path.insert(0, PROJECT_DIR)
+from utils.validate_input import ValidationResult, check_image
 
 tmp = tempfile.mkdtemp()
 REAL_MAMMO = os.path.join(PROJECT_DIR, "data/demo/train_images/13101/447716546.png")
@@ -49,8 +49,8 @@ Ce notebook couvre deux questions independantes :
 
 ### Ce que teste `make test`
 
-`make test` lance `pytest scripts/test_validate_input.py` sur deux fonctions de
-[`scripts/validate_input.py`](../scripts/validate_input.py) :
+`make test` lance `pytest utils/test_validate_input.py` sur deux fonctions de
+[`utils/validate_input.py`](../utils/validate_input.py) :
 `check_csv()` et `check_image()`. Chaque test fabrique une situation
 problematique precise et verifie que le validateur la detecte.
 
@@ -58,7 +58,7 @@ problematique precise et verifie que le validateur la detecte.
 
 ```{python}
 result = subprocess.run(
-    ["python", "-m", "pytest", "scripts/test_validate_input.py", "-v", "--tb=short"],
+    ["python", "-m", "pytest", "utils/test_validate_input.py", "-v", "--tb=short"],
     capture_output=True, text=True,
     cwd=PROJECT_DIR
 )

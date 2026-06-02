@@ -8,16 +8,26 @@ Sauvegarde incrémentale : chaque image est écrite dans le CSV dès qu'elle
 est traitée. Le script peut être interrompu et relancé : les images déjà
 présentes dans le CSV sont skippées.
 
+Sortie structurée : les prédictions vont dans un dossier de run horodaté
+    inference/runs/<dataset>/<model_tag>/<timestamp>/
+        predictions.csv, meta.json, README.md
+(même logique que fine_tuning/checkpoints/runs/). Utiliser --run-dir pour
+écrire dans un dossier précis (et reprendre un run interrompu).
+
 Usage :
     uv run python scripts/inference.py --output-dir data/preprocess_image/rsna_output
     uv run python scripts/inference.py --output-dir data/preprocess_image/rsna_output --model-index 1
+    uv run python scripts/inference.py --output-dir data/preprocess_image/sample --run-dir inference/runs/sample/gmic-nyu-sample1/manuel
 """
 
 import argparse
 import csv
+import json
 import os
 import pickle
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -28,9 +38,11 @@ import tqdm
 
 _HERE = Path(__file__).parent
 _PROJECT_ROOT = _HERE.parent
-sys.path.insert(0, str(_HERE))  # pour importer gmic_from_scratch
+sys.path.insert(0, str(_HERE))           # pour importer gmic_from_scratch
+sys.path.insert(0, str(_PROJECT_ROOT))   # pour importer fine_tuning.run_metadata
 
 from gmic_from_scratch import ScratchGMIC, load_nyu_weights  # noqa: E402
+from fine_tuning.run_metadata import make_run_dir, get_git_commit  # noqa: E402
 
 VIEWS = ["L-CC", "L-MLO", "R-CC", "R-MLO"]
 FIELDNAMES = ["image_index", "malignant_pred", "benign_pred", "malignant_label"]
@@ -121,28 +133,108 @@ def run(exam_list, model, image_dir: str, csv_path: str, device: torch.device, d
     return written
 
 
+def _rel(path) -> str:
+    """Chemin relatif au projet si possible, sinon absolu (pour les meta)."""
+    try:
+        return str(Path(path).resolve().relative_to(_PROJECT_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def write_run_metadata(run_dir: Path, *, dataset, model_index, model_tag, ckpt,
+                       input_dir, image_dir, n_exams, n_predictions, device) -> None:
+    """Écrit `meta.json` (machine) + `README.md` (humain) dans le dossier de run."""
+    meta = {
+        "run_kind": "gmic_inference",
+        "dataset": dataset,
+        "model_tag": model_tag,
+        "model_index": model_index,
+        "checkpoint": _rel(ckpt),
+        "input_preprocess_dir": _rel(input_dir),
+        "image_dir": _rel(image_dir),
+        "n_exams": n_exams,
+        "n_predictions": n_predictions,
+        "device": str(device),
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "git_commit": get_git_commit(_PROJECT_ROOT),
+        "script": "scripts/inference.py",
+        "columns": {
+            "image_index": "identifiant court de l'image (dossier/nom)",
+            "malignant_pred": "score GMIC de malignité (classe positive)",
+            "benign_pred": "score GMIC de bénignité",
+            "malignant_label": "vérité terrain (1 = cancer, 0 = sain)",
+        },
+    }
+    (run_dir / "meta.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False))
+
+    readme = [
+        f"# Run d'inférence GMIC — {run_dir.name}",
+        "",
+        "## Modèle",
+        f"- **Architecture** : ScratchGMIC (poids NYU pré-entraînés, non re-entraînés)",
+        f"- **Checkpoint** : `{meta['checkpoint']}` (model-index {model_index})",
+        "",
+        "## Données",
+        f"- **Dataset** : `{dataset}`",
+        f"- **Dossier préprocessé (entrée)** : `{meta['input_preprocess_dir']}`",
+        f"- **Examens** : {n_exams}  |  **Prédictions** : {n_predictions}",
+        "",
+        "## Exécution",
+        f"- **Date** : {meta['timestamp']}",
+        f"- **Device** : {device}",
+        f"- **Git commit** : `{meta['git_commit']}`",
+        "",
+        "## Fichiers",
+        "- `predictions.csv` — image_index, malignant_pred, benign_pred, malignant_label",
+        "- `meta.json`       — métadonnées machine (source de vérité)",
+        "",
+        "Évaluation / abstention :",
+        f"    uv run python scripts/eval_gmic.py --predictions {_rel(run_dir / 'predictions.csv')}",
+        "",
+    ]
+    (run_dir / "README.md").write_text("\n".join(readme))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output-dir", required=True,
-                        help="Dossier produit par preprocess.py (contient data.pkl et cropped_images/)")
+                        help="Dataset préprocessé par preprocess.py (ENTRÉE : data.pkl + cropped_images/)")
     parser.add_argument("--model-index", default="1", choices=["1", "2", "3", "4", "5"])
     parser.add_argument("--gpu-number", type=int, default=0)
+    parser.add_argument("--dataset", default=None,
+                        help="Nom du dataset pour structurer le run (défaut : nom du dossier --output-dir)")
+    parser.add_argument("--runs-root", default=None,
+                        help="Racine des runs d'inférence (défaut : <projet>/inference/runs)")
+    parser.add_argument("--run-dir", default=None,
+                        help="Écrit dans CE dossier précis (créé si absent, reprend si predictions.csv existe). "
+                             "Sinon : dossier horodaté auto sous runs-root/<dataset>/<model_tag>/<timestamp>/")
     args = parser.parse_args()
 
-    output_dir = os.path.abspath(args.output_dir)
-    pkl_path = os.path.join(output_dir, "data.pkl")
-    image_dir = os.path.join(output_dir, "cropped_images")
-    csv_path = os.path.join(output_dir, "predictions.csv")
+    input_dir = os.path.abspath(args.output_dir)
+    pkl_path = os.path.join(input_dir, "data.pkl")
+    image_dir = os.path.join(input_dir, "cropped_images")
 
     if not os.path.exists(pkl_path):
-        print(f"Erreur : data.pkl introuvable dans {output_dir}")
+        print(f"Erreur : data.pkl introuvable dans {input_dir}")
         sys.exit(1)
+
+    # Résolution du dossier de run (sortie structurée)
+    model_tag = f"gmic-nyu-sample{args.model_index}"
+    dataset = args.dataset or os.path.basename(input_dir.rstrip("/")) or "dataset"
+    if args.run_dir:
+        run_dir = Path(args.run_dir).resolve()
+        run_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        runs_root = Path(args.runs_root).resolve() if args.runs_root else _PROJECT_ROOT / "inference" / "runs"
+        run_dir = make_run_dir(runs_root, dataset, model_tag)
+    csv_path = os.path.join(run_dir, "predictions.csv")
 
     if torch.cuda.is_available():
         device = torch.device(f"cuda:{args.gpu_number}")
     else:
         device = torch.device("cpu")
     print(f"Device : {device}")
+    print(f"Run    : {_rel(run_dir)}")
 
     with open(pkl_path, "rb") as f:
         exam_list = pickle.load(f)
@@ -152,9 +244,19 @@ def main():
     print(f"Déjà traités : {len(done)} images")
 
     model = build_model(args.model_index, device)
+    ckpt = _PROJECT_ROOT / "GMIC" / "models" / f"sample_model_{args.model_index}.p"
 
     written = run(exam_list, model, image_dir, csv_path, device, done)
+    n_predictions = len(load_done(csv_path))
+
+    write_run_metadata(
+        run_dir, dataset=dataset, model_index=args.model_index, model_tag=model_tag,
+        ckpt=ckpt, input_dir=input_dir, image_dir=image_dir,
+        n_exams=len(exam_list), n_predictions=n_predictions, device=device,
+    )
+
     print(f"\nTerminé — {written} nouvelles prédictions → {csv_path}")
+    print(f"RUN_DIR={run_dir}")
 
 
 if __name__ == "__main__":

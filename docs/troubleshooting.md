@@ -169,11 +169,11 @@ Avant de lancer le pipeline, verifiez vos donnees :
 
 ```bash
 # Validation standard
-python scripts/validate_input.py --input-dir data/
+python utils/validate_input.py --input-dir data/
 
 # Validation stricte (warnings = erreurs)
-python scripts/validate_input.py --input-dir data/ --strict
+python utils/validate_input.py --input-dir data/ --strict
 
 # Avec un CSV specifique
-python scripts/validate_input.py --input-dir data/ --csv data/train.csv
+python utils/validate_input.py --input-dir data/ --csv data/train.csv
 ```

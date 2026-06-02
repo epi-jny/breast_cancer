@@ -63,6 +63,7 @@ RUN uv export --frozen --no-hashes --no-emit-project \
 
 # 3) Code + poids GMIC + images BRUTES (sample) — COPY sélectif.
 COPY scripts/ ./scripts/
+COPY utils/ ./utils/
 COPY fine_tuning/ ./fine_tuning/
 COPY abstention_module/ ./abstention_module/
 COPY GMIC/src/ ./GMIC/src/

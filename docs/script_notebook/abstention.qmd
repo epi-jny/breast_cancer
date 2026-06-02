@@ -46,7 +46,7 @@ from abstention_module.sgp_utils import sgp_dicho, emp_errs_count, emp_metric
 from abstention_module.preprocessing import train_test_split
 
 RUN_DIR = Path(PROJECT_DIR) / "abstention_module" / "runs" / \
-    "density__resnet18_pretrained-pos3__20260429-134215"
+    "density" / "resnet18_pretrained-D" / "20260429-134215"
 
 run_ok = (RUN_DIR / "sgp_set.pkl").exists() and (RUN_DIR / "meta.json").exists()
 if run_ok:

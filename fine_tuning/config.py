@@ -20,7 +20,7 @@ RUN_DIR = os.path.join(PROJECT_ROOT, "data", "preprocess_image", RUN_NAME)
 # data.pkl : liste des exams avec leurs labels et chemins d'images
 EXAM_LIST_PATH = os.path.join(RUN_DIR, "data.pkl")
 
-# cropped_512/ : images uint8 512×512 pré-resizées par scripts/preresize_images.py
+# cropped_512/ : images uint8 512×512 pré-resizées par utils/preresize_images.py
 # (fallback sur cropped_images/ 2944×1920 si le cache 512 n'existe pas encore)
 IMAGE_DIR = os.path.join(RUN_DIR, "cropped_512")
 

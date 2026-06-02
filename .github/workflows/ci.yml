@@ -28,4 +28,4 @@ jobs:
         run: uv pip install --system opencv-python-headless numpy pytest
 
       - name: Tests unitaires (validate_input)
-        run: python -m pytest scripts/test_validate_input.py -v
+        run: python -m pytest utils/test_validate_input.py -v

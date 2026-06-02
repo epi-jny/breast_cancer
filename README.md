@@ -40,7 +40,7 @@ flowchart LR
 
 | Module | Rôle |
 |:---|:---|
-| `scripts/preprocess.py` | DICOM/PNG → crop → resize 2944×1920, écrit `data.pkl` |
+| `utils/preprocess.py` | DICOM/PNG → crop → resize 2944×1920, écrit `data.pkl` |
 | `scripts/run_gmic_pipeline.py` | Wrapper preprocess + inférence GMIC |
 | `fine_tuning/train_resnet.py` | Entraînement ResNet18 sur label `cancer` |
 | `fine_tuning/train_resnet_normalite.py` | Entraînement ResNet18 sur label « normalité » (cancer ∨ biopsy ∨ difficult) |
@@ -77,44 +77,24 @@ uv run python -c "import torch; print('CUDA:', torch.cuda.is_available(), '|', t
 ### Docker : image autonome (sans repo)
 
 Une image **self-contained** embarque tout (code + poids NYU + 8 mammographies
-**brutes** non préprocessées). Pas besoin de cloner le repo ni de fournir de
-données : on build, on `run`, et le **pipeline complet** s'exécute sur les images
-embarquées — preprocessing (crop + resize 2944×1920) **puis** inférence GMIC.
+brutes). Pas besoin de cloner le repo ni de fournir de données : on build, on
+`run`, et le pipeline complet s'exécute sur les images embarquées.
 
 ```bash
-# Build CPU (portable, ~2 Go — tourne sur n'importe quel PC)
-make docker-build            # ou : docker build -f docker/inference/Dockerfile -t gmic-inference:cpu .
+# Build CPU (portable) puis lancer la démo (preprocess + inférence → predictions)
+make docker-build            # → gmic-inference:cpu
+make docker-run              # = docker run --rm gmic-inference:cpu
 
-# Lancer la démo (preprocess + inférence des 8 images → predictions.csv affiché)
-make docker-run              # ou : docker run --rm gmic-inference:cpu
-```
-
-Variante **GPU NVIDIA** (CUDA 12.1, ~6 Go, nécessite
-[nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)) :
-
-```bash
-make docker-build-gpu        # build --build-arg TORCH_VARIANT=cu121
+# Variante GPU NVIDIA (CUDA 12.1)
+make docker-build-gpu
 make docker-run-gpu          # docker run --rm --gpus all gmic-inference:gpu
+
+# Menu des commandes (demo, pipeline, infer, eval, train, smoke, bash…)
+docker run --rm gmic-inference:cpu help
 ```
 
-Usages avancés (tout reste sans repo monté) :
-
-```bash
-# Choisir un autre modèle de l'ensemble NYU (1..5)
-docker run --rm -e MODEL_INDEX=3 gmic-inference:cpu
-
-# Shell interactif dans l'image
-docker run --rm -it gmic-inference:cpu bash
-
-# Préprocesser + inférer SES PROPRES images brutes (DICOM/PNG + train.csv)
-docker run --rm -e INPUT_DIR=/data -v /chemin/mes_images_brutes:/data gmic-inference:cpu
-# (ou en deux temps via une commande explicite :
-#  docker run --rm -v /chemin:/data gmic-inference:cpu \
-#      python scripts/preprocess.py --input-dir /data --output-dir /out)
-```
-
-> Le détail du build (build-args, ce qui est embarqué) est dans
-> [`docker/inference/Dockerfile`](docker/inference/Dockerfile).
+> 📖 **Guide complet** (récupérer/partager l'image, monter ses données avec `-v`,
+> où atterrissent les résultats, GPU, dépannage) : [`docs/docker.md`](docs/docker.md).
 
 ### Alternative : VS Code dans le navigateur (code-server via Docker)
 
@@ -147,10 +127,10 @@ uv sync
 ### 1. Inférence GMIC sur des images de démo
 
 ```bash
-uv run python -m scripts.run_gmic_pipeline \
-    --input data/raw/sample \
-    --output data/preprocess_image/sample
-# → data/preprocess_image/sample/predictions.csv
+# 1) preprocessing (crop + resize) puis 2) inférence GMIC
+uv run python utils/preprocess.py --input-dir data/raw/sample --output-dir data/preprocess_image/sample
+uv run python scripts/inference.py  --output-dir data/preprocess_image/sample
+# → inference/runs/sample/gmic-nyu-sample1/{timestamp}/predictions.csv (+ meta.json, README.md)
 ```
 
 ### 2. Entraînement ResNet18 (cible « normalité »)

@@ -1,0 +1,119 @@
+{
+  "name": "normalite/smallcnn/20260427-162128",
+  "target": "normalite",
+  "dataset_name": "RSNA Breast Cancer Detection (2022, Kaggle)",
+  "dataset_kind": "rsna",
+  "model_tag": "smallcnn",
+  "training_timestamp": "20260427-162128",
+  "abstention_diagnostic": {
+    "usable_for_abstention": false,
+    "pathology_flags": [
+      "ranking_inverted(acc_top10%=0.387 < acc_bot10%=0.506)"
+    ],
+    "pred_positive_rate_global": 0.6363,
+    "kappa_spread": 0.2931,
+    "accuracy_top10pct_kappa": 0.3872,
+    "accuracy_bot10pct_kappa": 0.5057
+  },
+  "kappa_min": 0.500001,
+  "kappa_max": 0.793142,
+  "inference": {
+    "timestamp": "2026-05-25 10:50:00",
+    "duration_s": 249.9,
+    "device": "cuda",
+    "batch_size": 64,
+    "in_channels": 3,
+    "dataset_kind": "rsna",
+    "image_dir": "preprocess_image/rsna_output/cropped_512",
+    "stats_mean": [
+      0.2795693576335907,
+      0.2795693576335907,
+      0.2795693576335907
+    ],
+    "stats_std": [
+      0.2502475082874298,
+      0.2502475082874298,
+      0.2502475082874298
+    ],
+    "stats_choice": "rgb",
+    "img_size": 512
+  },
+  "checkpoint": {
+    "path": "fine_tuning/checkpoints/runs/normalite/smallcnn/20260427-162128/best.pt",
+    "best_auc": 0.5928,
+    "best_epoch": 4,
+    "loss": null,
+    "sampler": "WeightedRandomSampler (équilibre normal / anormal)"
+  },
+  "training_args": {
+    "target": "normalite",
+    "label_rule": "cancer==1 OR biopsy==1 OR difficult_negative_case==True OR BIRADS==0",
+    "label_csv": "data/rsna_images/train_subset.csv",
+    "model_arch": "SmallCNN (2 conv blocks + AdaptiveAvgPool(8,8) + FC) — du notebook intro_pytorch.qmd",
+    "head_desc": "Linear(64*8*8, 128) → ReLU → Dropout(p=0.3) → Linear(128, 1)",
+    "pretrained": false,
+    "n_parameters": 544129,
+    "dataset_name": "RSNA Breast Cancer Detection (2022, Kaggle)",
+    "image_dir": "/root/projet_cancer_sein/preprocess_image/rsna_output/cropped_512",
+    "val_split": 0.2,
+    "random_seed": 42,
+    "n_train": 5181,
+    "n_val": 1271,
+    "n_positive_train": 847,
+    "n_positive_val": 203,
+    "aggregation": "par image (chaque vue = un échantillon), label lu dans le CSV",
+    "epochs": 50,
+    "batch_size": 24,
+    "lr": 0.001,
+    "weight_decay": 1e-05,
+    "img_size": 512,
+    "device": "cuda",
+    "warmup_epochs": 5,
+    "patience": 10,
+    "augmentation": "hflip + affine(rot=10, trans=5%, scale=±5%) + jitter(0.25)",
+    "sampler": "WeightedRandomSampler (équilibre normal / anormal)",
+    "num_workers": 8,
+    "git_commit": "6f153c8-dirty",
+    "started_at": "2026-04-27 16:21:28",
+    "ended_at": "2026-04-27 17:31:36",
+    "total_time_s": 4208.3,
+    "total_time_human": "1 h 10 min 08 s",
+    "epochs_ran": 14,
+    "early_stopped": true,
+    "best_auc": 0.5928,
+    "best_epoch": 4
+  },
+  "dataset": {
+    "n_total": 13177,
+    "split_sizes": {
+      "cal": 9874,
+      "test": 3303
+    }
+  },
+  "baselines": {
+    "cal": {
+      "n": 9874,
+      "positives": 1570,
+      "base_rate": 0.159,
+      "accuracy_at_0.5": 0.4297,
+      "pred_positive_rate": 0.6345,
+      "p_mean": 0.5203,
+      "p_std": 0.0614,
+      "kappa_mean": 0.5506,
+      "kappa_min": 0.5,
+      "kappa_max": 0.7848
+    },
+    "test": {
+      "n": 3303,
+      "positives": 541,
+      "base_rate": 0.1638,
+      "accuracy_at_0.5": 0.4251,
+      "pred_positive_rate": 0.6418,
+      "p_mean": 0.5203,
+      "p_std": 0.0617,
+      "kappa_mean": 0.5498,
+      "kappa_min": 0.5001,
+      "kappa_max": 0.7931
+    }
+  }
+}

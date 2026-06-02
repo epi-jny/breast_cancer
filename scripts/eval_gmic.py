@@ -11,7 +11,7 @@ Ce script le convertit au format `sgp_set` attendu par abstention_module
 courbe accuracy vs seuil avec le code existant, SANS rien réécrire :
 
     uv run python scripts/eval_gmic.py
-    uv run python -m abstention_module.threshold --run cancer__gmic-nyu-sample1__<ts> --split cal
+    uv run python -m abstention_module.threshold --run cancer/gmic-nyu-sample1/<ts> --split cal
 
 Convention de conversion (cf. infer.py:_run_inference) :
     p      = malignant_pred                 (proba de la classe positive = malignité)
@@ -81,7 +81,8 @@ def main() -> None:
     sgp = build_sgp(df, args.score_col, args.label_col)
 
     inference_ts = datetime.fromtimestamp(args.predictions.stat().st_mtime).strftime("%Y%m%d-%H%M%S")
-    name = args.run_name or f"cancer__gmic-nyu-sample1__{inference_ts}"
+    # Arborescence imbriquée runs/<target>/<model_tag>/<timestamp>/ (cf. infer.py / fine_tuning)
+    name = args.run_name or f"cancer/gmic-nyu-sample1/{inference_ts}"
     out_dir = RUNS_DIR / name
     out_dir.mkdir(parents=True, exist_ok=True)
 

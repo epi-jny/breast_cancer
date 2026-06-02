@@ -19,7 +19,7 @@ notebook:  ## Rend un notebook Quarto en HTML (NOTEBOOK=gmic|resnet18_training|r
 	uv run quarto render docs/script_notebook/$(NOTEBOOK).qmd --to html
 
 test:  ## Lance les tests unitaires
-	uv run pytest scripts/test_validate_input.py -v
+	uv run pytest utils/test_validate_input.py -v
 
 DOCKERFILE := docker/inference/Dockerfile
 

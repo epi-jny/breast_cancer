@@ -14,6 +14,8 @@ INPUT_DIR="${INPUT_DIR:-data/raw/sample}"
 OUTPUT_DIR="${OUTPUT_DIR:-data/preprocess_image/sample}"
 MODEL_INDEX="${MODEL_INDEX:-1}"
 NUM_PROC="${NUM_PROC:-2}"
+# Dossier de run d'inférence (structuré) utilisé par demo/pipeline.
+INFER_RUN_DIR="${INFER_RUN_DIR:-inference/runs/sample/gmic-nyu-sample${MODEL_INDEX}/demo}"
 
 usage() {
     cat <<EOF
@@ -22,7 +24,7 @@ GMIC — image autonome tout-en-un. Usage : docker run --rm <image> <commande> [
 Commandes :
   demo                 (défaut) preprocess + inférence sur le sample embarqué
   pipeline             demo + évaluation (preprocess -> inférence -> éval)
-  preprocess [args]    scripts/preprocess.py        (crop + resize)
+  preprocess [args]    utils/preprocess.py        (crop + resize)
   infer [args]         scripts/inference.py         (--output-dir par défaut: $OUTPUT_DIR)
   eval [args]          scripts/eval_gmic.py         (métriques sur predictions.csv)
   train [args]         fine_tuning/train_resnet.py  (entraînement ResNet)
@@ -42,14 +44,15 @@ run_demo() {
     echo "==============================================================="
     echo
     echo "### ÉTAPE 1/2 — Preprocessing (crop + resize 2944×1920)"
-    python scripts/preprocess.py --input-dir "${INPUT_DIR}" \
+    python utils/preprocess.py --input-dir "${INPUT_DIR}" \
         --output-dir "${OUTPUT_DIR}" --num-processes "${NUM_PROC}"
     echo
     echo "### ÉTAPE 2/2 — Inférence GMIC"
-    python scripts/inference.py --output-dir "${OUTPUT_DIR}" --model-index "${MODEL_INDEX}"
+    python scripts/inference.py --output-dir "${OUTPUT_DIR}" --model-index "${MODEL_INDEX}" \
+        --run-dir "${INFER_RUN_DIR}"
     echo
-    echo "=== Prédictions : ${OUTPUT_DIR}/predictions.csv ==="
-    cat "${OUTPUT_DIR}/predictions.csv"
+    echo "=== Prédictions : ${INFER_RUN_DIR}/predictions.csv ==="
+    cat "${INFER_RUN_DIR}/predictions.csv"
 }
 
 cmd="${1:-demo}"
@@ -61,15 +64,16 @@ case "$cmd" in
         run_demo
         echo
         echo "### ÉTAPE 3/3 — Évaluation"
-        python scripts/eval_gmic.py --predictions "${OUTPUT_DIR}/predictions.csv"
+        python scripts/eval_gmic.py --predictions "${INFER_RUN_DIR}/predictions.csv"
         ;;
     preprocess)
-        shift; exec python scripts/preprocess.py "$@"
+        shift; exec python utils/preprocess.py "$@"
         ;;
     infer|inference)
         shift
         if [ "$#" -eq 0 ]; then
-            exec python scripts/inference.py --output-dir "${OUTPUT_DIR}" --model-index "${MODEL_INDEX}"
+            exec python scripts/inference.py --output-dir "${OUTPUT_DIR}" --model-index "${MODEL_INDEX}" \
+                --run-dir "${INFER_RUN_DIR}"
         fi
         exec python scripts/inference.py "$@"
         ;;
@@ -80,7 +84,7 @@ case "$cmd" in
         shift; exec python fine_tuning/train_resnet.py "$@"
         ;;
     test)
-        shift; exec python -m pytest scripts/test_validate_input.py -v "$@"
+        shift; exec python -m pytest utils/test_validate_input.py -v "$@"
         ;;
     smoke)
         exec smoke_test.sh
