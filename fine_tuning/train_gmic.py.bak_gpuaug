@@ -17,27 +17,17 @@ SELECTIONNE et on fait l'EARLY STOPPING sur l'AUC_malignant agregee au niveau
 du SEIN (pid + cote, moyenne des vues CC+MLO) -> unite cliniquement etiquetee
 (RSNA), pas la vue isolee. best.pt = meilleur AUC_mal niveau examen.
 
-Augmentation : --gpu-augment deplace l'augmentation (affine + gamma) sur GPU
-via kornia -> les workers CPU ne font plus que decoder les PNG (la machine est
-CPU/IO-bound a 8 vCPU, pas GPU-bound). Sans le flag : augmentation CPU du
-dataset (comportement historique).
-
-Organisation : chaque run cree runs/{target}/{model_tag}/{timestamp}/ avec
-args.json (verite machine) + README.md humain (mis a jour en fin de run),
-via run_metadata. --out court-circuite si fourni (retro-compat).
-
 Usage :
     ./.venv/bin/python -m fine_tuning.train_gmic \
         --weights GMIC/models/sample_model_1.p --percent-t 0.02 \
-        --gpu-augment --abstain-frac 0 --model-tag gmic_full-ft_gpu-aug \
-        2>&1 | tee /tmp/train_gmic.log   # le vrai log vit dans le run dir
+        --epochs 30 --batch-size 4 \
+        2>&1 | tee fine_tuning/checkpoints/gmic_ft/train.log
 """
 import argparse
 import json
 import os
 import sys
 import time
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -54,40 +44,8 @@ from fine_tuning.dataset_gmic import make_loaders, INPUT_SIZE, _side  # noqa: E4
 from fine_tuning.gmic_finetune import (  # noqa: E402
     build_gmic, default_parameters, param_groups, freeze_backbone, set_backbone_eval,
 )
-from fine_tuning.run_metadata import (  # noqa: E402
-    make_run_dir, get_git_commit, write_run_readme, write_args_json, format_duration,
-)
 
 EPS = 1e-7
-
-
-class GPUAugment(nn.Module):
-    """Augmentation kornia sur GPU -- memes transformations que dataset._augment
-    (CPU) : affine (rotation +/-15, scale 0.9-1.1, translation +/-max_shift px,
-    fond noir) + jitter gamma (p=0.5, 0.8-1.25). PAS de hflip (vues deja
-    normalisees chest-wall-a-gauche). Train only (a ne pas appeler en eval).
-
-    Entree : float (B,1,H,W) sur [0,255]. Le z-score en aval annule toute
-    echelle lineaire -> on travaille sur [0,1], seul le gamma non-lineaire
-    survit (meme raisonnement que la version CPU).
-    """
-
-    def __init__(self, input_size=INPUT_SIZE, max_shift=(48, 32)):
-        super().__init__()
-        import kornia.augmentation as K
-        # kornia translate = fractions (horizontale/W, verticale/H)
-        tx = max_shift[1] / input_size[1]
-        ty = max_shift[0] / input_size[0]
-        self.affine = K.RandomAffine(
-            degrees=15.0, translate=(tx, ty), scale=(0.9, 1.1),
-            p=1.0, same_on_batch=False, padding_mode="zeros")
-        self.gamma = K.RandomGamma(gamma=(0.8, 1.25), p=0.5, same_on_batch=False)
-
-    def forward(self, x):
-        x = x / 255.0
-        x = self.affine(x)
-        x = self.gamma(x.clamp(0.0, 1.0))
-        return x
 
 
 def gpu_standardize(x):
@@ -221,124 +179,32 @@ def main():
                     help="part patients pour la validation")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--grad-clip", type=float, default=1.0)
-    ap.add_argument("--gpu-augment", action="store_true",
-                    help="augmentation kornia sur GPU (les workers CPU ne font plus que decoder)")
-    ap.add_argument("--runs-root", default="fine_tuning/checkpoints/runs",
-                    help="racine de l'arborescence runs/{target}/{model_tag}/{timestamp}")
-    ap.add_argument("--model-tag", default=None,
-                    help="libelle du run (defaut auto : gmic_{full-ft|frozen}_{gpu|cpu}-aug)")
-    ap.add_argument("--out", default=None,
-                    help="court-circuite l'arborescence runs/ (retro-compat anciens scripts)")
+    ap.add_argument("--out", default="fine_tuning/checkpoints/gmic_ft")
     ap.add_argument("--no-amp", action="store_true")
     ap.add_argument("--resume", action="store_true")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
+    os.makedirs(args.out, exist_ok=True)
     device = torch.device("cuda")
     use_amp = not args.no_amp
 
-    # --- run dir documente : runs/{target}/{model_tag}/{timestamp}/ ---
-    target = "cancer_malignant_gmic"
-    if args.model_tag is None:
-        args.model_tag = ("gmic_" + ("frozen" if args.freeze_backbone else "full-ft")
-                          + ("_gpu-aug" if args.gpu_augment else "_cpu-aug"))
-    if args.out:
-        run_dir = Path(args.out)            # retro-compat
-        run_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        run_dir = make_run_dir(Path(args.runs_root), target, args.model_tag)
-    args.out = str(run_dir)
-    started_at = time.strftime("%Y-%m-%d %H:%M:%S")
-    t_run0 = time.time()
-
-    # stdout/stderr dupliques dans run_dir/train.log (plus besoin de tee externe,
-    # le timestamp du run dir n'est pas connaissable avant le lancement)
-    class _Tee:
-        def __init__(self, *streams):
-            self.streams = streams
-
-        def write(self, s):
-            for st in self.streams:
-                st.write(s)
-                st.flush()
-
-        def flush(self):
-            for st in self.streams:
-                st.flush()
-
-    _logf = open(run_dir / "train.log", "a", buffering=1)
-    sys.stdout = _Tee(sys.stdout, _logf)
-    sys.stderr = _Tee(sys.stderr, _logf)
-
     print("=" * 60)
-    print(f"Finetuning GMIC | run dir : {run_dir}")
+    print("Finetuning GMIC | config :")
     for k, v in vars(args).items():
         print(f"  {k:14s}: {v}")
     print("=" * 60)
 
     # --- data ---
-    # GPU-augment actif -> augmentation CPU du dataset desactivee (les workers
-    # ne font plus que decoder les PNG)
     train_loader, val_loader, train_samples, val_samples = make_loaders(
         pkl_path=args.pkl, image_dir=args.image_dir,
         batch_size=args.batch_size, num_workers=args.num_workers,
         train_frac=args.train_frac, abstain_frac=args.abstain_frac,
-        val_frac=args.val_frac, seed=args.seed, augment=not args.gpu_augment,
+        val_frac=args.val_frac, seed=args.seed, augment=True,
         input_size=INPUT_SIZE,
         split_out=os.path.join(args.out, "split_patients.json"),
     )
-    gpu_aug = GPUAugment(input_size=INPUT_SIZE).to(device) if args.gpu_augment else None
-
-    # --- metadonnees du run (README humain + args.json machine) ---
-    aug_desc = ("kornia GPU : affine (rot +/-15deg, scale 0.9-1.1, transl +/-48/32px, "
-                "fond noir) + gamma 0.8-1.25 p=0.5 ; rotation ROI {0,90,180,270} dans "
-                "le forward (train only) ; PAS de hflip" if args.gpu_augment else
-                "CPU (dataset._augment) : affine + gamma ; rotation ROI dans le forward")
-    meta = {
-        "target": target,
-        "aggregation": "entrainement par vue ; selection/early-stop par SEIN (pid+cote, mean CC+MLO)",
-        "model_arch": f"GMIC (ResNet-22 global + ResNet-18 local, K=6 patchs 256x256, percent_t={args.percent_t})",
-        "pretrained": True,
-        "init_desc": f"poids NYU pre-entraines `{args.weights}` (strict=False)",
-        "head_desc": "3 tetes sigmoidees [benign, malignant] : y_global (top-t%), y_local (MIL attention), y_fusion",
-        "dataset_name": "RSNA breast cancer (data.pkl, labels benign corriges via biopsy)",
-        "image_dir": args.image_dir,
-        "img_size": "2944×1920 (H×W, full-res GMIC)",
-        "split_desc": (f"patient-level stratifie seed={args.seed} : "
-                       f"train {args.train_frac:.0%} / abstention {args.abstain_frac:.0%} / "
-                       f"val {args.val_frac:.0%}" +
-                       (" (PAS de held-out abstention : tout sauf val en train)"
-                        if args.abstain_frac <= 0 else "")),
-        "random_seed": args.seed,
-        "n_train": len(train_samples),
-        "n_positive_train": int(sum(s["malignant"] for s in train_samples)),
-        "n_val": len(val_samples),
-        "n_positive_val": int(sum(s["malignant"] for s in val_samples)),
-        "started_at": started_at,
-        "device": torch.cuda.get_device_name(0),
-        "batch_size": args.batch_size,
-        "epochs": args.epochs,
-        "patience": args.patience,
-        "lr": f"backbone {args.lr_backbone} / tetes {args.lr_head}",
-        "weight_decay": args.weight_decay,
-        "warmup_epochs": args.warmup_epochs,
-        "augmentation": aug_desc,
-        "sampler": "WeightedRandomSampler ~50/50 vues avec lesion vs negatives (recette papier)",
-        "git_commit": get_git_commit(Path(PROJECT_ROOT)),
-        "loss": f"BCE(y_fusion)+BCE(y_global)+BCE(y_local)+{args.beta}*L1(saliency)",
-        "files_desc": [
-            "- `best.pt`    — checkpoint complet du meilleur epoch (EXAM AUC_mal)",
-            "- `last.pt`    — checkpoint de reprise (--resume)",
-            "- `logs.json`  — métriques par epoch (vue + exam)",
-            "- `args.json`  — hyperparams bruts (source de vérité machine)",
-            "- `train.log`  — stdout de l'entraînement",
-            "- `split_patients.json` — PID train/abstention/val (à réutiliser tel quel)",
-        ],
-        "argv": vars(args),
-    }
-    write_args_json(run_dir, meta)
-    write_run_readme(run_dir, meta)
 
     # --- modele ---
     params = default_parameters(percent_t=args.percent_t, gpu_number=0, dropout=args.dropout)
@@ -361,8 +227,6 @@ def main():
 
     logs = []
     best_auc = -1.0
-    best_epoch = None
-    early_stopped = False
     epochs_no_improve = 0
     start_epoch = 0
     ckpt_last = os.path.join(args.out, "last.pt")
@@ -389,10 +253,7 @@ def main():
                "bce_local": 0.0, "l1_saliency": 0.0}
         nb = 0
         for x, y in train_loader:
-            x = x.to(device, non_blocking=True).float()
-            if gpu_aug is not None:
-                x = gpu_aug(x)          # augmentation sur GPU (train only)
-            x = gpu_standardize(x)
+            x = gpu_standardize(x.to(device, non_blocking=True))
             yt = y.to(device)
             optimizer.zero_grad(set_to_none=True)
             with autocast("cuda", enabled=use_amp):
@@ -433,7 +294,6 @@ def main():
         auc_m = metrics["exam_auc_malignant"]
         if auc_m == auc_m and auc_m > best_auc + args.min_delta:  # not NaN et amelioration nette
             best_auc = auc_m
-            best_epoch = epoch
             epochs_no_improve = 0
             save_ckpt(ckpt_best, epoch, model, optimizer, scheduler, scaler, best_auc, logs)
             print(f"           -> nouveau best EXAM AUC_mal={best_auc:.4f} (sauve dans best.pt)")
@@ -442,26 +302,11 @@ def main():
             print(f"           pas d'amelioration ({epochs_no_improve}/{args.patience}) "
                   f"| best EXAM AUC_mal={best_auc:.4f}")
             if epochs_no_improve >= args.patience:
-                early_stopped = True
                 print(f"[early stopping] arret a l'epoch {epoch} : "
                       f"{args.patience} epochs sans amelioration. Best EXAM AUC_mal={best_auc:.4f}")
                 break
 
-    # --- README final (resultats) ---
-    total_s = time.time() - t_run0
-    meta.update({
-        "ended_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "best_auc": best_auc if best_auc > 0 else None,
-        "best_epoch": best_epoch,
-        "epochs_ran": len(logs),
-        "early_stopped": early_stopped,
-        "total_time_human": format_duration(total_s),
-        "total_time_s": round(total_s, 1),
-    })
-    write_args_json(run_dir, meta)
-    write_run_readme(run_dir, meta)
-    print(f"Termine. Best EXAM AUC malignant (par sein) = {best_auc:.4f} "
-          f"(epoch {best_epoch}) | run documente dans {run_dir}")
+    print(f"Termine. Best EXAM AUC malignant (par sein) = {best_auc:.4f}")
 
 
 if __name__ == "__main__":

@@ -163,19 +163,13 @@ def load_and_split3(pkl_path, train_frac=2.0 / 3, abstain_frac=1.0 / 6,
     )
     # 2) separer train vs abstention dans le reste.
     #    train doit valoir train_frac du TOTAL -> train_frac/(1-val_frac) du reste
-    #    abstain_frac<=0 -> pas de held-out abstention, tout le reste part en
-    #    train (la val extraite en 1) ne depend que de val_frac+seed -> reste
-    #    IDENTIQUE aux runs avec abstention : comparables).
-    if abstain_frac <= 0:
-        train_pids, abstain_pids = list(rest_pids), []
-    else:
-        rest_labels = [pid_label[p] for p in rest_pids]
-        train_size_rel = train_frac / (1.0 - val_frac)
-        train_pids, abstain_pids = train_test_split(
-            rest_pids, train_size=train_size_rel,
-            stratify=rest_labels if _can_strat(rest_labels) else None,
-            random_state=seed,
-        )
+    rest_labels = [pid_label[p] for p in rest_pids]
+    train_size_rel = train_frac / (1.0 - val_frac)
+    train_pids, abstain_pids = train_test_split(
+        rest_pids, train_size=train_size_rel,
+        stratify=rest_labels if _can_strat(rest_labels) else None,
+        random_state=seed,
+    )
 
     train_set, abstain_set, val_set = set(train_pids), set(abstain_pids), set(val_pids)
     train_ex = [e for e in exams if _exam_pid(e) in train_set]

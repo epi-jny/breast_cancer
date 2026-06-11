@@ -51,16 +51,6 @@ TARGET_CATALOG: dict[str, dict[str, str]] = {
             "multi-classe à 4 sorties. Images sans density renseignée exclues."
         ),
     },
-    "cancer_malignant_gmic": {
-        "column": "cancer (+ biopsy pour le canal benign)",
-        "definition": (
-            "Sorties GMIC 2 canaux [benign, malignant] par sein : "
-            "malignant = cancer==1 ; benign = biopsy==1 & cancer==0. "
-            "Entraînement par VUE (GMIC traite une vue à la fois), mais "
-            "sélection/early-stopping sur l'AUC malignant agrégée par SEIN "
-            "(patient_id+latéralité, moyenne des probas CC+MLO)."
-        ),
-    },
 }
 
 
@@ -142,23 +132,14 @@ def write_run_readme(run_dir: Path, meta: dict[str, Any]) -> None:
         "",
         "## Modèle",
         f"- **Architecture** : {meta.get('model_arch', '?')}",
-        # init_desc : description libre prioritaire (ex: poids NYU pour GMIC)
-        f"- **Initialisation** : "
-        + (meta["init_desc"] if meta.get("init_desc") else
-           ("ImageNet1K_V1 (fine-tuning)" if meta.get("pretrained") else "aléatoire (from-scratch)")),
+        f"- **Initialisation** : {'ImageNet1K_V1 (fine-tuning)' if meta.get('pretrained') else 'aléatoire (from-scratch)'}",
         f"- **Tête de classification** : {meta.get('head_desc', '?')}",
         "",
         "## Données",
         f"- **Dataset** : {meta.get('dataset_name', '?')}",
         f"- **Dossier images** : `{meta.get('image_dir', '?')}`",
-        # img_size : int -> carré "S×S" ; str -> tel quel (ex: "2944×1920 (H×W)")
-        f"- **Taille images (modèle)** : "
-        + (f"{meta.get('img_size')}×{meta.get('img_size')}"
-           if isinstance(meta.get("img_size"), int) else str(meta.get("img_size", "?"))),
-        # split_desc : description libre prioritaire sur le format val_split standard
-        f"- **Split** : "
-        + (meta["split_desc"] if meta.get("split_desc") else
-           f"{100*(1-meta.get('val_split',0)):.0f} % train / {100*meta.get('val_split',0):.0f} % val, stratifié au niveau exam, seed={meta.get('random_seed','?')}"),
+        f"- **Taille images (modèle)** : {meta.get('img_size')}×{meta.get('img_size')}",
+        f"- **Split** : {100*(1-meta.get('val_split',0)):.0f} % train / {100*meta.get('val_split',0):.0f} % val, stratifié au niveau exam, seed={meta.get('random_seed','?')}",
         f"- **Train** : {meta.get('n_train','?')} images / {meta.get('n_positive_train','?')} positifs",
         f"- **Val**   : {meta.get('n_val','?')} images / {meta.get('n_positive_val','?')} positifs",
         "",
@@ -180,12 +161,10 @@ def write_run_readme(run_dir: Path, meta: dict[str, Any]) -> None:
         + (" (early-stopped)" if meta.get("early_stopped") else ""),
         "",
         "## Fichiers",
-    ] + (meta["files_desc"] if meta.get("files_desc") else [
         "- `best.pt`    — poids du meilleur epoch (state_dict + val_preds/val_targets)",
         "- `logs.json`  — métriques par epoch",
         "- `args.json`  — hyperparams bruts (source de vérité machine)",
         "- `roc.png`    — courbe ROC du meilleur epoch (val set)",
-    ]) + [
         "",
     ]
     (run_dir / "README.md").write_text("\n".join(lines))
