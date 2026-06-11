@@ -24,8 +24,8 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Installer les dépendances minimales des tests
-        # Les tests n'utilisent que cv2 + numpy + pytest (pas torch).
-        run: uv pip install --system opencv-python-headless numpy pytest
+        # Les tests utilisent cv2 + numpy + pandas + pytest (pas torch).
+        run: uv pip install --system opencv-python-headless numpy pandas pytest
 
       - name: Tests unitaires (validate_input)
         run: python -m pytest utils/test_validate_input.py -v
