@@ -165,7 +165,6 @@ def build_exam_pkl(csv_path: str, png_dir: str, pkl_path: str) -> list:
             lat = row["laterality"]
             view = row["view"]
             cancer = int(row["cancer"])
-            biopsy = int(row["biopsy"])
             view_key = f"{lat}-{view}"
 
             png_path = os.path.join(png_dir, pid, f"{iid}.png")
@@ -175,19 +174,11 @@ def build_exam_pkl(csv_path: str, png_dir: str, pkl_path: str) -> list:
             if view_key in patients[pid]:
                 patients[pid][view_key].append(f"{pid}/{iid}")
 
-            # Labels RSNA :
-            #   malignant = cancer biopsié (cancer == 1)
-            #   benign    = biopsié SANS cancer (biopsy == 1 & cancer == 0)
-            # Un sein jamais biopsié (biopsy == 0, cancer == 0) n'est NI benign
-            # NI malignant -> les deux flags restent 0 (et pas "unknown", car
-            # l'absence de biopsie en dépistage = négatif radiologique, pas un
-            # cas indéterminé). Surtout : NE PAS faire benign = NOT malignant,
-            # ce qui étiquetterait ~98 % des seins sains comme benign.
             side = "left" if lat == "L" else "right"
             if cancer == 1:
                 patients[pid]["cancer_label"]["malignant"] = 1
                 patients[pid]["cancer_label"][f"{side}_malignant"] = 1
-            if biopsy == 1 and cancer == 0:
+            else:
                 patients[pid]["cancer_label"]["benign"] = 1
                 patients[pid]["cancer_label"][f"{side}_benign"] = 1
 
@@ -198,10 +189,8 @@ def build_exam_pkl(csv_path: str, png_dir: str, pkl_path: str) -> list:
     with open(pkl_path, "wb") as f:
         pickle.dump(exam_list, f)
 
-    mal_count = sum(1 for e in exam_list if e["cancer_label"]["malignant"])
-    ben_count = sum(1 for e in exam_list if e["cancer_label"]["benign"])
-    print(f"Examens : {len(exam_list)} total | {mal_count} malignant | "
-          f"{ben_count} benign (biopsy & ~cancer)")
+    cancer_count = sum(1 for e in exam_list if e["cancer_label"]["malignant"])
+    print(f"Examens : {len(exam_list)} total | {cancer_count} cancer | {len(exam_list)-cancer_count} sains")
     if dropped > 0:
         print(f"Patients fantomes ignores (aucune image locale) : {dropped}")
     print(f"PKL sauvegarde : {pkl_path}")
@@ -268,32 +257,6 @@ def run_crop(png_dir: str, cropped_dir: str, pkl_raw: str, pkl_cropped: str, num
 
 # ── Étape 4 : Resize 2944×1920 + normalisation ───────────────────────────────
 
-def _resize_one(args):
-    """Worker parallele : resize/normalise une image en place.
-    Retourne (status, sfp_ou_None, scale_ou_None). Logique identique a la
-    boucle sequentielle d'origine."""
-    path, cropped_dir = args
-    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-    if img is None:
-        return ("none", None, None)
-    h, w = img.shape[:2]
-    if h == GMIC_H and w == GMIC_W:
-        if img.max() > 255 or img.dtype != np.uint8:
-            cv2.imwrite(path, _normalize_uint8(img))
-            return ("skipnorm", None, None)
-        return ("skip", None, None)
-    rel = os.path.relpath(path, cropped_dir)
-    sfp = rel[:-4] if rel.endswith(".png") else rel
-    interp = cv2.INTER_AREA if (h > GMIC_H or w > GMIC_W) else cv2.INTER_LINEAR
-    img_resized = cv2.resize(img, (GMIC_W, GMIC_H), interpolation=interp)
-    norm = False
-    if img_resized.max() > 255 or img_resized.dtype != np.uint8:
-        img_resized = _normalize_uint8(img_resized)
-        norm = True
-    cv2.imwrite(path, img_resized)
-    return ("resizednorm" if norm else "resized", sfp, (GMIC_H / h, GMIC_W / w))
-
-
 def resize_all(cropped_dir: str, pkl_cropped: str, output_dir: str = None):
     print("\n" + "=" * 60)
     print(f"ETAPE 4 : Redimensionnement a {GMIC_H}x{GMIC_W} + normalisation [0, 255]")
@@ -313,28 +276,34 @@ def resize_all(cropped_dir: str, pkl_cropped: str, output_dir: str = None):
     scale_map = {}
     resized, skipped, normalized = 0, 0, 0
 
-    from multiprocessing import Pool
-    nproc = min(8, os.cpu_count() or 4)
-    with Pool(nproc) as pool:
-        results = pool.map(
-            _resize_one,
-            [(p, cropped_dir) for p in all_pngs],
-            chunksize=16,
-        )
+    for path in tqdm(all_pngs, desc="Resize"):
+        img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+        if img is None:
+            continue
+        h, w = img.shape[:2]
 
-    for status, sfp, scale in results:
-        if status == "none":
-            continue
-        if status in ("skip", "skipnorm"):
-            skipped += 1
-            if status == "skipnorm":
+        if h == GMIC_H and w == GMIC_W:
+            if img.max() > 255 or img.dtype != np.uint8:
+                img = _normalize_uint8(img)
+                cv2.imwrite(path, img)
                 normalized += 1
+            skipped += 1
             continue
-        # resized / resizednorm
-        scale_map[sfp] = scale
-        resized += 1
-        if status == "resizednorm":
+
+        # short_file_path = "patient_id/image_id" (sans extension)
+        rel = os.path.relpath(path, cropped_dir)
+        sfp = rel[:-4] if rel.endswith(".png") else rel
+        scale_map[sfp] = (GMIC_H / h, GMIC_W / w)
+
+        interp = cv2.INTER_AREA if (h > GMIC_H or w > GMIC_W) else cv2.INTER_LINEAR
+        img_resized = cv2.resize(img, (GMIC_W, GMIC_H), interpolation=interp)
+
+        if img_resized.max() > 255 or img_resized.dtype != np.uint8:
+            img_resized = _normalize_uint8(img_resized)
             normalized += 1
+
+        cv2.imwrite(path, img_resized)
+        resized += 1
 
     print(f"Redimensionnees : {resized} | Deja OK : {skipped} | Normalisees [0,255] : {normalized}")
 
@@ -410,14 +379,6 @@ _FLIP_MARKER = ".right_views_flipped"
 _VIEWS_RIGHT = {"R-CC", "R-MLO"}
 
 
-def _flip_one(path):
-    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-    if img is None:
-        return 0
-    cv2.imwrite(path, cv2.flip(img, 1))  # 1 = axe vertical = flip horizontal
-    return 1
-
-
 def apply_right_view_flip(cropped_dir: str, pkl_path: str, output_dir: str):
     """
     Retourne horizontalement toutes les images R-CC et R-MLO dans cropped_dir.
@@ -436,18 +397,18 @@ def apply_right_view_flip(cropped_dir: str, pkl_path: str, output_dir: str):
     with open(pkl_path, "rb") as f:
         exam_list = pickle.load(f)
 
-    paths = []
-    for exam in exam_list:
+    flipped = 0
+    for exam in tqdm(exam_list, desc="Flip"):
         for view in _VIEWS_RIGHT:
             for sfp in exam.get(view, []):
                 path = os.path.join(cropped_dir, sfp + ".png")
-                if os.path.exists(path):
-                    paths.append(path)
-
-    from multiprocessing import Pool
-    nproc = min(8, os.cpu_count() or 4)
-    with Pool(nproc) as pool:
-        flipped = sum(pool.map(_flip_one, paths, chunksize=16))
+                if not os.path.exists(path):
+                    continue
+                img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+                if img is None:
+                    continue
+                cv2.imwrite(path, cv2.flip(img, 1))  # 1 = axe vertical = flip horizontal
+                flipped += 1
 
     open(os.path.join(output_dir, _FLIP_MARKER), "w").close()
     print(f"Images retournees : {flipped}")

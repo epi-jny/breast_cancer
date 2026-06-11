@@ -1,0 +1,48 @@
+=== PHASE 1 : data-loading (batch=16, gpu_norm=0) ===
+  b=16 w=2 pin=0 pf=1 gn=0  |   29.4 img/s |  1.84 st/s | VRAM  6.9 GB | RAM  2.8 GB
+  b=16 w=2 pin=1 pf=2 gn=0  |   26.5 img/s |  1.66 st/s | VRAM  6.9 GB | RAM  5.3 GB
+  b=16 w=4 pin=0 pf=1 gn=0  |   46.2 img/s |  2.89 st/s | VRAM  6.9 GB | RAM  3.6 GB
+  b=16 w=4 pin=1 pf=2 gn=0  |   53.7 img/s |  3.36 st/s | VRAM  6.9 GB | RAM  8.6 GB
+  b=16 w=6 pin=1 pf=2 gn=0  |   71.5 img/s |  4.47 st/s | VRAM  6.9 GB | RAM 11.0 GB
+  b=16 w=8 pin=1 pf=2 gn=0  |   68.3 img/s |  4.27 st/s | VRAM  6.9 GB | RAM 12.3 GB
+  b=16 w=8 pin=0 pf=2 gn=0  |   49.0 img/s |  3.06 st/s | VRAM  6.9 GB | RAM  9.5 GB
+
+-> meilleur data-loading : workers=6 pin=1 prefetch=2
+
+=== PHASE 2 : batch x normalisation-GPU (workers=6 pin=1 pf=2) ===
+  b=8  w=6 pin=1 pf=2 gn=0  |   62.5 img/s |  7.81 st/s | VRAM  3.6 GB | RAM  6.7 GB
+  b=8  w=6 pin=1 pf=2 gn=1  |   71.6 img/s |  8.94 st/s | VRAM  3.6 GB | RAM  2.9 GB
+  b=16 w=6 pin=1 pf=2 gn=0  |   69.6 img/s |  4.35 st/s | VRAM  6.9 GB | RAM 11.1 GB
+  b=16 w=6 pin=1 pf=2 gn=1  |   76.9 img/s |  4.80 st/s | VRAM  6.9 GB | RAM  4.1 GB
+  b=32 w=6 pin=1 pf=2 gn=0  |   60.5 img/s |  1.89 st/s | VRAM 13.6 GB | RAM 17.8 GB
+  b=32 w=6 pin=1 pf=2 gn=1  |   62.4 img/s |  1.95 st/s | VRAM 13.6 GB | RAM  6.0 GB
+  b=48 w=6 pin=1 pf=2 gn=0  |   61.7 img/s |  1.28 st/s | VRAM 20.2 GB | RAM 30.7 GB
+  b=48 w=6 pin=1 pf=2 gn=1  |   65.4 img/s |  1.36 st/s | VRAM 20.2 GB | RAM 10.4 GB
+  b=64 w=6 pin=1 pf=2 gn=0  |   67.7 img/s |  1.06 st/s | VRAM 26.9 GB | RAM 31.8 GB
+  b=64 w=6 pin=1 pf=2 gn=1  |   68.1 img/s |  1.06 st/s | VRAM 26.9 GB | RAM  9.7 GB
+
+======================================================================
+CLASSEMENT (par debit, configs OK) :
+  b=16 w=6 pin=1 pf=2 gn=1  |   76.9 img/s |  4.80 st/s | VRAM  6.9 GB | RAM  4.1 GB
+  b=8  w=6 pin=1 pf=2 gn=1  |   71.6 img/s |  8.94 st/s | VRAM  3.6 GB | RAM  2.9 GB
+  b=16 w=6 pin=1 pf=2 gn=0  |   71.5 img/s |  4.47 st/s | VRAM  6.9 GB | RAM 11.0 GB
+  b=16 w=6 pin=1 pf=2 gn=0  |   69.6 img/s |  4.35 st/s | VRAM  6.9 GB | RAM 11.1 GB
+  b=16 w=8 pin=1 pf=2 gn=0  |   68.3 img/s |  4.27 st/s | VRAM  6.9 GB | RAM 12.3 GB
+  b=64 w=6 pin=1 pf=2 gn=1  |   68.1 img/s |  1.06 st/s | VRAM 26.9 GB | RAM  9.7 GB
+  b=64 w=6 pin=1 pf=2 gn=0  |   67.7 img/s |  1.06 st/s | VRAM 26.9 GB | RAM 31.8 GB
+  b=48 w=6 pin=1 pf=2 gn=1  |   65.4 img/s |  1.36 st/s | VRAM 20.2 GB | RAM 10.4 GB
+  b=8  w=6 pin=1 pf=2 gn=0  |   62.5 img/s |  7.81 st/s | VRAM  3.6 GB | RAM  6.7 GB
+  b=32 w=6 pin=1 pf=2 gn=1  |   62.4 img/s |  1.95 st/s | VRAM 13.6 GB | RAM  6.0 GB
+  b=48 w=6 pin=1 pf=2 gn=0  |   61.7 img/s |  1.28 st/s | VRAM 20.2 GB | RAM 30.7 GB
+  b=32 w=6 pin=1 pf=2 gn=0  |   60.5 img/s |  1.89 st/s | VRAM 13.6 GB | RAM 17.8 GB
+  b=16 w=4 pin=1 pf=2 gn=0  |   53.7 img/s |  3.36 st/s | VRAM  6.9 GB | RAM  8.6 GB
+  b=16 w=8 pin=0 pf=2 gn=0  |   49.0 img/s |  3.06 st/s | VRAM  6.9 GB | RAM  9.5 GB
+  b=16 w=4 pin=0 pf=1 gn=0  |   46.2 img/s |  2.89 st/s | VRAM  6.9 GB | RAM  3.6 GB
+  b=16 w=2 pin=0 pf=1 gn=0  |   29.4 img/s |  1.84 st/s | VRAM  6.9 GB | RAM  2.8 GB
+  b=16 w=2 pin=1 pf=2 gn=0  |   26.5 img/s |  1.66 st/s | VRAM  6.9 GB | RAM  5.3 GB
+
+>>> RECOMMANDATION (rapide + RAM < 30 GB) :
+  b=16 w=6 pin=1 pf=2 gn=1  |   76.9 img/s |  4.80 st/s | VRAM  6.9 GB | RAM  4.1 GB
+
+JSON -> _gmic_sweep_results.json
+======================================================================

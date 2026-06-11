@@ -57,6 +57,16 @@ flowchart LR
 - **Python 3.11+** (uv peut l'installer automatiquement)
 - **GPU NVIDIA** (sm_61+) — projet testé sur Quadro P1000 avec torch 2.4.1+cu121
 - **[Quarto ≥ 1.5](https://quarto.org/docs/get-started/)** pour rendre les notebooks
+  <details><summary>Installation sans sudo (VM/serveur)</summary>
+
+  ```bash
+  mkdir -p ~/opt ~/.local/bin
+  wget -q https://github.com/quarto-dev/quarto-cli/releases/download/v1.7.32/quarto-1.7.32-linux-amd64.tar.gz -P /tmp
+  tar -xzf /tmp/quarto-1.7.32-linux-amd64.tar.gz -C ~/opt
+  ln -sf ~/opt/quarto-1.7.32/bin/quarto ~/.local/bin/quarto
+  # si besoin : export PATH=$HOME/.local/bin:$PATH dans ~/.bashrc
+  ```
+  </details>
 - **Poids GMIC** (`sample_model_1.p` à `sample_model_5.p`) à placer dans `GMIC/models/`
   ([instructions de téléchargement](https://github.com/nyukat/GMIC#how-to-run-the-code))
 
@@ -70,9 +80,19 @@ cd projet_cancer_sein
 # Installer les dépendances (crée .venv automatiquement)
 uv sync
 
+# Enregistrer le kernel Jupyter "gmic" (requis : les .qmd déclarent `jupyter: gmic`)
+uv run python -m ipykernel install --user --name gmic --display-name Python-gmic
+
 # Vérifier l'install
 uv run python -c "import torch; print('CUDA:', torch.cuda.is_available(), '|', torch.__version__)"
+uv run quarto check jupyter
 ```
+
+> ⚠️ **`uv sync` supprime tout package non déclaré dans `pyproject.toml`**
+> (y compris le sync automatique de `uv run`). Pour ajouter une dépendance,
+> utiliser `uv add <package>` — jamais `uv pip install`, sinon le package
+> disparaîtra au prochain sync. Le kernel `gmic` enregistré ci-dessus n'est
+> pas concerné (installé dans `~/.local/share/jupyter/kernels/`).
 
 ### Docker : image autonome (sans repo)
 

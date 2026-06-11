@@ -1,0 +1,218 @@
+"""
+Dataset PyTorch pour le finetuning de GMIC.
+
+GMIC traite UNE vue a la fois -> l'unite est l'IMAGE (la vue), pas l'exam.
+  - entree : Tensor (1, 2944, 1920) float32, z-score par image
+  - label  : Tensor (2,)  = [benign, malignant] du SEIN correspondant
+
+Les PNG de cropped_images/ sont deja :
+  - croppes/resizes a 2944x1920 (taille d'entree GMIC) -> pas de process_image/best_center
+  - flippes (vues droites) -> orientation chest-wall-a-gauche pour toutes les vues
+    => on NE refait PAS de flip horizontal (casserait la convention).
+
+Split patient-level stratifie (pas de fuite de vues d'un meme patient entre train/val).
+Sampler : WeightedRandomSampler equilibrant le malignant (recette anti-collapse).
+"""
+import os
+import pickle
+
+import numpy as np
+import torch
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
+from sklearn.model_selection import train_test_split
+
+import imageio.v2 as imageio
+
+VIEWS = ["L-CC", "L-MLO", "R-CC", "R-MLO"]
+INPUT_SIZE = (2944, 1920)  # (H, W)
+
+
+def _side(view):
+    return "left" if view.startswith("L") else "right"
+
+
+def _exam_pid(exam):
+    for v in VIEWS:
+        fs = exam.get(v) or []
+        if fs:
+            return fs[0].split("/")[0]
+    return None
+
+
+def build_samples(exam_list, image_dir):
+    """Aplati la liste d'exams en liste d'echantillons par vue."""
+    samples = []
+    for exam in exam_list:
+        cl = exam["cancer_label"]
+        pid = _exam_pid(exam)
+        for v in VIEWS:
+            fs = exam.get(v) or []
+            if not fs:
+                continue
+            path = os.path.join(image_dir, fs[0] + ".png")
+            if not os.path.exists(path):
+                continue
+            side = _side(v)
+            ben = int(cl.get(f"{side}_benign", 0))
+            mal = int(cl.get(f"{side}_malignant", 0))
+            samples.append({
+                "path": path,
+                "view": v,
+                "pid": pid,
+                "label": np.array([ben, mal], dtype=np.float32),
+                "malignant": mal,
+            })
+    return samples
+
+
+class GMICViewDataset(Dataset):
+    def __init__(self, samples, augment=False, input_size=INPUT_SIZE,
+                 max_shift=(48, 32)):
+        self.samples = samples
+        self.augment = augment
+        self.input_size = input_size
+        self.max_shift = max_shift  # (dy_max, dx_max) en pixels
+
+    def __len__(self):
+        return len(self.samples)
+
+    def _load(self, path):
+        im = np.asarray(imageio.imread(path), dtype=np.float32)
+        if im.shape != self.input_size:
+            import cv2
+            im = cv2.resize(im, (self.input_size[1], self.input_size[0]),
+                            interpolation=cv2.INTER_CUBIC)
+        return im
+
+    def _augment(self, im):
+        # Translation aleatoire legere (pad zero + recrop). PAS de flip horizontal.
+        H, W = im.shape
+        mh, mw = self.max_shift
+        dy = np.random.randint(-mh, mh + 1)
+        dx = np.random.randint(-mw, mw + 1)
+        padded = np.pad(im, ((mh, mh), (mw, mw)), mode="constant")
+        y0, x0 = mh + dy, mw + dx
+        return padded[y0:y0 + H, x0:x0 + W]
+
+    def __getitem__(self, idx):
+        s = self.samples[idx]
+        im = self._load(s["path"])
+        if self.augment:
+            im = self._augment(im)
+        # z-score par image (standard_normalize de GMIC)
+        im = im - im.mean()
+        im = im / max(im.std(), 1e-5)
+        img = torch.from_numpy(np.ascontiguousarray(im)).unsqueeze(0)  # (1,H,W)
+        label = torch.from_numpy(s["label"])
+        return img, label
+
+
+def load_and_split3(pkl_path, train_frac=1.0 / 3, abstain_frac=1.0 / 2,
+                    val_frac=1.0 / 6, seed=42):
+    """Split patient-level DISJOINT en 3 ensembles : train / abstention / val.
+
+    L'abstention (selective prediction) doit s'entrainer sur des donnees
+    disjointes du classifieur GMIC, sinon ses scores de confiance sont biaises.
+    Stratifie sur "le patient a-t-il un malignant". Defaut : 1/3, 1/2, 1/6.
+    """
+    with open(pkl_path, "rb") as f:
+        exams = pickle.load(f)
+
+    # split patient-level stratifie par "patient a-t-il un malignant"
+    pid_label = {}
+    for e in exams:
+        pid = _exam_pid(e)
+        if pid is None:
+            continue
+        m = int(e["cancer_label"].get("malignant", 0))
+        pid_label[pid] = max(pid_label.get(pid, 0), m)
+
+    uniq = sorted(pid_label.keys())
+    labels = [pid_label[p] for p in uniq]
+
+    def _can_strat(lbls):
+        npos = sum(lbls)
+        return npos >= 2 and (len(lbls) - npos) >= 2
+
+    # 1) extraire la validation (val_frac du total)
+    rest_pids, val_pids = train_test_split(
+        uniq, test_size=val_frac,
+        stratify=labels if _can_strat(labels) else None,
+        random_state=seed,
+    )
+    # 2) separer train vs abstention dans le reste.
+    #    train doit valoir train_frac du TOTAL -> train_frac/(1-val_frac) du reste
+    rest_labels = [pid_label[p] for p in rest_pids]
+    train_size_rel = train_frac / (1.0 - val_frac)
+    train_pids, abstain_pids = train_test_split(
+        rest_pids, train_size=train_size_rel,
+        stratify=rest_labels if _can_strat(rest_labels) else None,
+        random_state=seed,
+    )
+
+    train_set, abstain_set, val_set = set(train_pids), set(abstain_pids), set(val_pids)
+    train_ex = [e for e in exams if _exam_pid(e) in train_set]
+    abstain_ex = [e for e in exams if _exam_pid(e) in abstain_set]
+    val_ex = [e for e in exams if _exam_pid(e) in val_set]
+    split_pids = {"train": sorted(train_set), "abstain": sorted(abstain_set),
+                  "val": sorted(val_set)}
+    return train_ex, abstain_ex, val_ex, split_pids
+
+
+def _make_sampler(samples):
+    mal = [s["malignant"] for s in samples]
+    n_pos = sum(mal)
+    n_neg = len(mal) - n_pos
+    w_pos = 1.0 / n_pos if n_pos else 0.0
+    w_neg = 1.0 / n_neg if n_neg else 0.0
+    weights = [w_pos if m else w_neg for m in mal]
+    return WeightedRandomSampler(weights, num_samples=len(weights), replacement=True)
+
+
+def make_loaders(pkl_path, image_dir, batch_size=4, num_workers=8,
+                 train_frac=1.0 / 3, abstain_frac=1.0 / 2, val_frac=1.0 / 6,
+                 seed=42, augment=True, input_size=INPUT_SIZE, split_out=None):
+    train_ex, abstain_ex, val_ex, split_pids = load_and_split3(
+        pkl_path, train_frac, abstain_frac, val_frac, seed)
+    train_samples = build_samples(train_ex, image_dir)
+    val_samples = build_samples(val_ex, image_dir)
+    abstain_samples = build_samples(abstain_ex, image_dir)
+
+    def _stats(samples, name):
+        n = len(samples)
+        npos = sum(s["malignant"] for s in samples)
+        nben = sum(int(s["label"][0]) for s in samples)
+        print(f"{name:9s}: {n} vues | malignant={npos} | benign={nben}")
+
+    _stats(train_samples, "train")
+    _stats(abstain_samples, "abstention")
+    _stats(val_samples, "val")
+
+    # Sauvegarde du split patient-level : le modele d'abstention DOIT reutiliser
+    # exactement ces ensembles disjoints (sinon fuite train<->abstention).
+    if split_out:
+        import json
+        payload = {"seed": seed,
+                   "fracs": {"train": train_frac, "abstain": abstain_frac,
+                             "val": val_frac},
+                   "n_patients": {k: len(v) for k, v in split_pids.items()},
+                   "pids": split_pids}
+        with open(split_out, "w") as f:
+            json.dump(payload, f)
+        print(f"split patient-level (train/abstention/val) -> {split_out}")
+
+    train_ds = GMICViewDataset(train_samples, augment=augment, input_size=input_size)
+    val_ds = GMICViewDataset(val_samples, augment=False, input_size=input_size)
+
+    # --- bornage RAM : pas de pin_memory, prefetch minimal, workers non persistants
+    loader_kw = dict(num_workers=num_workers, pin_memory=False)
+    if num_workers > 0:
+        loader_kw.update(prefetch_factor=1, persistent_workers=False)
+    train_loader = DataLoader(
+        train_ds, batch_size=batch_size, sampler=_make_sampler(train_samples),
+        drop_last=True, **loader_kw,
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=batch_size, shuffle=False, **loader_kw,
+    )
+    return train_loader, val_loader, train_samples, val_samples
