@@ -73,15 +73,7 @@ class GMICViewDataset(Dataset):
         self.augment = augment
         self.input_size = input_size
         self.max_shift = max_shift  # (dy_max, dx_max) en pixels
-        self.to_uint8 = to_uint8  # True -> dtype compact, normalisation reportee sur GPU
-        # Detection de la profondeur du cache : PNG uint16 (cropped_16bit, valeurs
-        # natives 12 bits <=4095) -> transfert int16 (torch n'a pas d'uint16) ;
-        # PNG uint8 (cropped_images) -> transfert uint8. Le z-score GPU en aval
-        # est insensible a l'echelle.
-        self.bit16 = False
-        if samples:
-            im0 = np.asarray(imageio.imread(samples[0]["path"]))
-            self.bit16 = im0.dtype == np.uint16
+        self.to_uint8 = to_uint8  # True -> renvoie uint8, normalisation reportee sur GPU
 
     def __len__(self):
         return len(self.samples)
@@ -114,13 +106,9 @@ class GMICViewDataset(Dataset):
         M[1, 2] += dy
         im = cv2.warpAffine(im, M, (W, H), flags=cv2.INTER_LINEAR,
                             borderMode=cv2.BORDER_CONSTANT, borderValue=0.0)
-        if np.random.rand() < 0.5:  # gamma relatif au max de l'image (scale-aware :
-            # uint8 minmax-stretche -> max~255, identique a l'historique /255 ;
-            # uint16 natif 12 bits -> max reel de l'image)
+        if np.random.rand() < 0.5:  # gamma sur l'echelle [0,255] des PNG uint8
             gamma = np.random.uniform(0.8, 1.25)
-            vr = float(im.max())
-            if vr > 0:
-                im = vr * np.power(np.clip(im, 0.0, vr) / vr, gamma)
+            im = 255.0 * np.power(np.clip(im, 0.0, 255.0) / 255.0, gamma)
         return im
 
     def __getitem__(self, idx):
@@ -129,14 +117,8 @@ class GMICViewDataset(Dataset):
         if self.augment:
             im = self._augment(im)
         if self.to_uint8:
-            # dtype compact (2-4x moins de RAM/bande passante que float32) ;
-            # z-score fait sur GPU cote train
-            if self.bit16:
-                # valeurs natives 12 bits <=4095 : tiennent largement en int16
-                img = torch.from_numpy(np.ascontiguousarray(
-                    np.clip(im, 0.0, 32767.0).astype(np.int16))).unsqueeze(0)
-            else:
-                img = torch.from_numpy(np.ascontiguousarray(im.astype(np.uint8))).unsqueeze(0)
+            # 4x moins de RAM/bande passante ; z-score fait sur GPU cote train
+            img = torch.from_numpy(np.ascontiguousarray(im.astype(np.uint8))).unsqueeze(0)
         else:
             # z-score par image (standard_normalize de GMIC)
             im = im - im.mean()
@@ -257,15 +239,9 @@ def make_loaders(pkl_path, image_dir, batch_size=4, num_workers=8,
 
     # --- config optimale (sweep _gmic_sweep.py) : images en uint8 -> normalisation
     #     sur GPU cote train -> RAM bornee meme avec pin_memory + prefetch 2
-    # En 16 bits (int16 = 2x les octets de l'uint8) l'empreinte RAM double ;
-    # sur cette VM (94 Go SANS swap) ca part en reclaim/compaction (88% sys,
-    # GPU affame, blocage de fait). Chemin FRUGAL en 16 bits : pas de
-    # pin_memory (page-locked = non reclaimable) + prefetch 1. Le 8 bits garde
-    # le chemin rapide du sweep (pin + prefetch 2). N'affecte PAS les resultats.
-    frugal = train_ds.bit16
-    loader_kw = dict(num_workers=num_workers, pin_memory=not frugal)
+    loader_kw = dict(num_workers=num_workers, pin_memory=True)
     if num_workers > 0:
-        loader_kw.update(prefetch_factor=(1 if frugal else 2), persistent_workers=False)
+        loader_kw.update(prefetch_factor=2, persistent_workers=False)
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, sampler=_make_sampler(train_samples),
         drop_last=True, **loader_kw,

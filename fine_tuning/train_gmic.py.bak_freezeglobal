@@ -53,7 +53,6 @@ sys.path.insert(0, PROJECT_ROOT)
 from fine_tuning.dataset_gmic import make_loaders, INPUT_SIZE, _side  # noqa: E402
 from fine_tuning.gmic_finetune import (  # noqa: E402
     build_gmic, default_parameters, param_groups, freeze_backbone, set_backbone_eval,
-    freeze_global, set_global_eval,
 )
 from fine_tuning.run_metadata import (  # noqa: E402
     make_run_dir, get_git_commit, write_run_readme, write_args_json, format_duration,
@@ -230,7 +229,6 @@ def main():
     ap.add_argument("--beta", type=float, default=1e-4, help="poids L1 sur la saliency")
     ap.add_argument("--dropout", type=float, default=0.0, help="dropout sur l'entree du classifieur fusion (train-only)")
     ap.add_argument("--freeze-backbone", action="store_true", help="linear-probe : gele ds_net+dn_resnet, entraine seulement les tetes")
-    ap.add_argument("--freeze-global", action="store_true", help="gele SEULEMENT le backbone global (ds_net) ; dn_resnet + tetes entraines (diagnostic par tete)")
     ap.add_argument("--warmup-epochs", type=int, default=1)
     ap.add_argument("--num-workers", type=int, default=8)
     ap.add_argument("--train-frac", type=float, default=2.0 / 3,
@@ -261,9 +259,7 @@ def main():
     # --- run dir documente : runs/{target}/{model_tag}/{timestamp}/ ---
     target = "cancer_malignant_gmic"
     if args.model_tag is None:
-        _mode = ("frozen" if args.freeze_backbone else
-                 "freeze-global" if args.freeze_global else "full-ft")
-        args.model_tag = ("gmic_" + _mode
+        args.model_tag = ("gmic_" + ("frozen" if args.freeze_backbone else "full-ft")
                           + ("_gpu-aug" if args.gpu_augment else "_cpu-aug"))
     if args.out:
         run_dir = Path(args.out)            # retro-compat
@@ -373,8 +369,6 @@ def main():
     model = build_gmic(args.weights, params, device)
     if args.freeze_backbone:
         freeze_backbone(model)
-    if args.freeze_global:
-        freeze_global(model)
 
     optimizer = torch.optim.Adam(
         param_groups(model, args.lr_backbone, args.lr_head),
@@ -414,8 +408,6 @@ def main():
         model.train()
         if args.freeze_backbone:
             set_backbone_eval(model)
-        if args.freeze_global:
-            set_global_eval(model)
         t0 = time.time()
         agg = {"loss": 0.0, "bce_fusion": 0.0, "bce_global": 0.0,
                "bce_local": 0.0, "l1_saliency": 0.0}

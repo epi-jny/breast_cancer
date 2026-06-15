@@ -53,7 +53,6 @@ sys.path.insert(0, PROJECT_ROOT)
 from fine_tuning.dataset_gmic import make_loaders, INPUT_SIZE, _side  # noqa: E402
 from fine_tuning.gmic_finetune import (  # noqa: E402
     build_gmic, default_parameters, param_groups, freeze_backbone, set_backbone_eval,
-    freeze_global, set_global_eval,
 )
 from fine_tuning.run_metadata import (  # noqa: E402
     make_run_dir, get_git_commit, write_run_readme, write_args_json, format_duration,
@@ -68,11 +67,9 @@ class GPUAugment(nn.Module):
     fond noir) + jitter gamma (p=0.5, 0.8-1.25). PAS de hflip (vues deja
     normalisees chest-wall-a-gauche). Train only (a ne pas appeler en eval).
 
-    Entree : float (B,1,H,W), echelle libre (uint8 [0,255] OU uint16 natif
-    12 bits) : on normalise par le MAX PAR IMAGE avant gamma -> pour les uint8
-    minmax-stretches (max~255) c'est identique a l'historique /255, et pour le
-    16 bits natif le gamma garde la meme force relative. Le z-score en aval
-    annule toute echelle lineaire -> seul le gamma non-lineaire survit.
+    Entree : float (B,1,H,W) sur [0,255]. Le z-score en aval annule toute
+    echelle lineaire -> on travaille sur [0,1], seul le gamma non-lineaire
+    survit (meme raisonnement que la version CPU).
     """
 
     def __init__(self, input_size=INPUT_SIZE, max_shift=(48, 32)):
@@ -87,8 +84,7 @@ class GPUAugment(nn.Module):
         self.gamma = K.RandomGamma(gamma=(0.8, 1.25), p=0.5, same_on_batch=False)
 
     def forward(self, x):
-        mx = x.amax(dim=(1, 2, 3), keepdim=True).clamp(min=1.0)
-        x = x / mx
+        x = x / 255.0
         x = self.affine(x)
         x = self.gamma(x.clamp(0.0, 1.0))
         return x
@@ -133,7 +129,7 @@ def evaluate(model, loader, samples, device, beta):
     moyenne les probas des vues (CC + MLO), unite cliniquement etiquetee.
     """
     model.eval()
-    preds_b, preds_m, preds_gm, preds_lm, labs = [], [], [], [], []
+    preds_b, preds_m, labs = [], [], []
     running = 0.0
     n = 0
     for x, y in loader:
@@ -145,18 +141,12 @@ def evaluate(model, loader, samples, device, beta):
         running += float(total) * x.size(0)
         n += x.size(0)
         yf = yf.float().cpu().numpy()
-        yg = yg.float().cpu().numpy()
-        yl = yl.float().cpu().numpy()
         preds_b.extend(yf[:, 0].tolist())
         preds_m.extend(yf[:, 1].tolist())
-        preds_gm.extend(yg[:, 1].tolist())  # malignant, tete GLOBAL
-        preds_lm.extend(yl[:, 1].tolist())  # malignant, tete LOCAL
         labs.append(y.numpy())
     labs = np.concatenate(labs)
     preds_m = np.array(preds_m)
     preds_b = np.array(preds_b)
-    preds_gm = np.array(preds_gm)
-    preds_lm = np.array(preds_lm)
 
     def safe_auc(y_true, y_score):
         y_true = np.asarray(y_true)
@@ -168,21 +158,16 @@ def evaluate(model, loader, samples, device, beta):
         "le loader val doit etre sequentiel (shuffle=False, drop_last=False)"
     )
     from collections import defaultdict
-    g_m, g_b, g_gm, g_lm, g_ym, g_yb = (defaultdict(list), defaultdict(list),
-        defaultdict(list), defaultdict(list), {}, {})
+    g_m, g_b, g_ym, g_yb = defaultdict(list), defaultdict(list), {}, {}
     for i, s in enumerate(samples):
         key = (s["pid"], _side(s["view"]))
         g_m[key].append(preds_m[i])
         g_b[key].append(preds_b[i])
-        g_gm[key].append(preds_gm[i])
-        g_lm[key].append(preds_lm[i])
         g_ym[key] = int(s["label"][1])
         g_yb[key] = int(s["label"][0])
     keys = list(g_m.keys())
     exam_pm = np.array([float(np.mean(g_m[k])) for k in keys])
     exam_pb = np.array([float(np.mean(g_b[k])) for k in keys])
-    exam_pgm = np.array([float(np.mean(g_gm[k])) for k in keys])
-    exam_plm = np.array([float(np.mean(g_lm[k])) for k in keys])
     exam_ym = np.array([g_ym[k] for k in keys])
     exam_yb = np.array([g_yb[k] for k in keys])
 
@@ -192,10 +177,6 @@ def evaluate(model, loader, samples, device, beta):
         "auc_benign": safe_auc(labs[:, 0], preds_b),
         "exam_auc_malignant": safe_auc(exam_ym, exam_pm),
         "exam_auc_benign": safe_auc(exam_yb, exam_pb),
-        "auc_global_mal": safe_auc(labs[:, 1], preds_gm),
-        "auc_local_mal": safe_auc(labs[:, 1], preds_lm),
-        "exam_auc_global_mal": safe_auc(exam_ym, exam_pgm),
-        "exam_auc_local_mal": safe_auc(exam_ym, exam_plm),
         "n_exams": len(keys),
     }
 
@@ -230,7 +211,6 @@ def main():
     ap.add_argument("--beta", type=float, default=1e-4, help="poids L1 sur la saliency")
     ap.add_argument("--dropout", type=float, default=0.0, help="dropout sur l'entree du classifieur fusion (train-only)")
     ap.add_argument("--freeze-backbone", action="store_true", help="linear-probe : gele ds_net+dn_resnet, entraine seulement les tetes")
-    ap.add_argument("--freeze-global", action="store_true", help="gele SEULEMENT le backbone global (ds_net) ; dn_resnet + tetes entraines (diagnostic par tete)")
     ap.add_argument("--warmup-epochs", type=int, default=1)
     ap.add_argument("--num-workers", type=int, default=8)
     ap.add_argument("--train-frac", type=float, default=2.0 / 3,
@@ -261,9 +241,7 @@ def main():
     # --- run dir documente : runs/{target}/{model_tag}/{timestamp}/ ---
     target = "cancer_malignant_gmic"
     if args.model_tag is None:
-        _mode = ("frozen" if args.freeze_backbone else
-                 "freeze-global" if args.freeze_global else "full-ft")
-        args.model_tag = ("gmic_" + _mode
+        args.model_tag = ("gmic_" + ("frozen" if args.freeze_backbone else "full-ft")
                           + ("_gpu-aug" if args.gpu_augment else "_cpu-aug"))
     if args.out:
         run_dir = Path(args.out)            # retro-compat
@@ -312,11 +290,6 @@ def main():
     )
     gpu_aug = GPUAugment(input_size=INPUT_SIZE).to(device) if args.gpu_augment else None
 
-    # profondeur du cache image (uint8 8 bits vs uint16 natif 12 bits)
-    import imageio.v2 as _imageio
-    pixel_depth = str(np.asarray(_imageio.imread(train_samples[0]["path"])).dtype)
-    print(f"[data] profondeur du cache {args.image_dir} : {pixel_depth}")
-
     # --- metadonnees du run (README humain + args.json machine) ---
     aug_desc = ("kornia GPU : affine (rot +/-15deg, scale 0.9-1.1, transl +/-48/32px, "
                 "fond noir) + gamma 0.8-1.25 p=0.5 ; rotation ROI {0,90,180,270} dans "
@@ -329,10 +302,9 @@ def main():
         "pretrained": True,
         "init_desc": f"poids NYU pre-entraines `{args.weights}` (strict=False)",
         "head_desc": "3 tetes sigmoidees [benign, malignant] : y_global (top-t%), y_local (MIL attention), y_fusion",
-        "dataset_name": f"RSNA breast cancer (data.pkl, labels benign corriges via biopsy, cache {pixel_depth})",
+        "dataset_name": "RSNA breast cancer (data.pkl, labels benign corriges via biopsy)",
         "image_dir": args.image_dir,
-        "img_size": f"2944×1920 (H×W, full-res GMIC, {pixel_depth})",
-        "pixel_depth": pixel_depth,
+        "img_size": "2944×1920 (H×W, full-res GMIC)",
         "split_desc": (f"patient-level stratifie seed={args.seed} : "
                        f"train {args.train_frac:.0%} / abstention {args.abstain_frac:.0%} / "
                        f"val {args.val_frac:.0%}" +
@@ -373,8 +345,6 @@ def main():
     model = build_gmic(args.weights, params, device)
     if args.freeze_backbone:
         freeze_backbone(model)
-    if args.freeze_global:
-        freeze_global(model)
 
     optimizer = torch.optim.Adam(
         param_groups(model, args.lr_backbone, args.lr_head),
@@ -414,8 +384,6 @@ def main():
         model.train()
         if args.freeze_backbone:
             set_backbone_eval(model)
-        if args.freeze_global:
-            set_global_eval(model)
         t0 = time.time()
         agg = {"loss": 0.0, "bce_fusion": 0.0, "bce_global": 0.0,
                "bce_local": 0.0, "l1_saliency": 0.0}
@@ -459,9 +427,6 @@ def main():
               f"| vue AUC_mal={metrics['auc_malignant']:.4f} "
               f"| EXAM AUC_mal={metrics['exam_auc_malignant']:.4f} "
               f"(ben={metrics['exam_auc_benign']:.4f}, n={metrics['n_exams']})")
-        print(f"           [tetes] EXAM AUC_mal  fusion={metrics['exam_auc_malignant']:.4f} "
-              f"global={metrics['exam_auc_global_mal']:.4f} local={metrics['exam_auc_local_mal']:.4f} "
-              f"| train BCE  fus={agg['bce_fusion']:.3f} glo={agg['bce_global']:.3f} loc={agg['bce_local']:.3f}")
 
         save_ckpt(ckpt_last, epoch, model, optimizer, scheduler, scaler, best_auc, logs)
         # Selection + early stopping sur l'AUC_malignant NIVEAU EXAMEN (par sein)

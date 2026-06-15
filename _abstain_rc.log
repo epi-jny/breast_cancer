@@ -1,0 +1,55 @@
+abstention 7944 vues / val 7944 vues
+== inference ENSEMBLE sur ABSTENTION ==
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere model1 (pt=0.02)
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere m2 (pt=0.03)
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere m3 (pt=0.03)
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere m4 (pt=0.05)
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere m5 (pt=0.1)
+== inference ENSEMBLE sur VAL ==
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere model1 (pt=0.02)
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere m2 (pt=0.03)
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere m3 (pt=0.03)
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere m4 (pt=0.05)
+[build_gmic] charge GMIC/models/sample_model_1.p
+  unexpected keys (1): ['shared_rep_filter.weight']
+  infere m5 (pt=0.1)
+[cache ecrit] _abstain_probs.npz
+
+seins  abstention: 3972 (81+)   val: 3972 (83+)
+AUC per-breast  abstention=0.8785  val=0.8831
+
+t* (sens cible 0.90 sur abstention) = 0.1011
+VAL @100% couverture, seuil t* : sens=0.940 spec=0.620 err=0.373 (FN=5, FP=1478, sur 83+ / 3972)
+
+=== RISK-COVERAGE sur VAL (seuil de marge calibre sur l'abstention) ===
+cov_cible     tau cov_val  n_ret pos_ret   sens   spec    err   FN   FP  AUC_ret
+     1.00  0.0000   1.000   3972      83  0.940  0.620  0.373    5 1478   0.8831
+     0.95  0.0047   0.957   3800      81  0.951  0.623  0.370    4 1403   0.8870
+     0.90  0.0098   0.909   3609      75  0.960  0.626  0.367    3 1323   0.9049
+     0.85  0.0150   0.858   3407      71  0.972  0.630  0.363    2 1235   0.9176
+     0.80  0.0199   0.812   3224      69  0.986  0.628  0.364    1 1174   0.9229
+     0.75  0.0251   0.763   3030      68  1.000  0.628  0.364    0 1103   0.9228
+     0.70  0.0302   0.713   2834      68  1.000  0.625  0.366    0 1038   0.9173
+     0.60  0.0401   0.609   2418      67  1.000  0.604  0.385    0  932   0.9077
+     0.50  0.0498   0.512   2033      62  1.000  0.574  0.413    0  839   0.9169
+
+CSV -> _abstain_rc.csv
+PNG -> _abstain_rc.png

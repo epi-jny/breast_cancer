@@ -1,0 +1,31 @@
+{
+  "name": "cancer/gmic-ens5-nyu-se90/20260615-085046",
+  "run_kind": "gmic_ensemble_evaluation",
+  "description": "Ensemble-moyenne des 5 GMIC finetunes NYU (sample_model_1..5, percent_t propres). sgp_set = abstention(1/6) UNION val(1/6), per-breast. p=proba malignant d'ensemble.",
+  "target": "cancer",
+  "dataset_kind": "rsna",
+  "model_tag": "gmic-ens5-nyu-se90",
+  "decision": {
+    "mode": "se90",
+    "t_star": 0.10108337402343746
+  },
+  "columns": {
+    "p": "malignant_pred d'ensemble (moyenne des 5)",
+    "kappa": "softmax response = max(p, 1-p)",
+    "y_pred": "1 si p >= 0.5",
+    "y_true": "malignant_label",
+    "split": "cal(abstention) / test(val) \u2014 informatif"
+  },
+  "kappa_min": 0.5012451171875,
+  "kappa_max": 0.9998046875,
+  "dataset": {
+    "n_total": 7944,
+    "split_sizes": {
+      "cal": 3972,
+      "test": 3972
+    },
+    "positives_total": 164,
+    "base_rate": 0.020644511581067473,
+    "pred_positive_rate_at_0.5": 0.3858257804632427
+  }
+}

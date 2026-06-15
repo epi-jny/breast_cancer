@@ -139,31 +139,3 @@ def set_backbone_eval(model):
     for name, module in model.named_modules():
         if name.startswith(_BACKBONE_PREFIXES):
             module.eval()
-
-
-# --- Variante : geler SEULEMENT le backbone GLOBAL (ds_net) ---
-# Diagnostic par tete (12 juin 2026) : la tete global voit son AUC val culminer
-# des l'epoch 0 puis se degrader (le finetuning DISTORD ses features NYU, cf
-# LP-FT Kumar 2022), alors que le backbone local (dn_resnet) encaisse mieux le
-# finetuning. Regime intermediaire : ds_net gele, dn_resnet + tetes entraines.
-_GLOBAL_PREFIXES = ("ds_net",)
-
-
-def freeze_global(model):
-    """Gele UNIQUEMENT le backbone global (ds_net). dn_resnet + tetes restent
-    entrainables. A combiner avec set_global_eval (BN figee)."""
-    n = 0
-    for name, p in model.named_parameters():
-        if name.startswith(_GLOBAL_PREFIXES):
-            p.requires_grad = False
-            n += p.numel()
-    print(f"[freeze_global] {n/1e6:.2f}M params backbone GLOBAL (ds_net) geles ; "
-          f"dn_resnet + tetes restent entrainables")
-
-
-def set_global_eval(model):
-    """Met le backbone GLOBAL (ds_net) en .eval() (BN figee). A rappeler apres
-    chaque model.train()."""
-    for name, module in model.named_modules():
-        if name.startswith(_GLOBAL_PREFIXES):
-            module.eval()

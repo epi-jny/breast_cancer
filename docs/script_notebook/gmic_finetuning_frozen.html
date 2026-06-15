@@ -268,7 +268,7 @@ window.Quarto = {
 </ul>
 <p>C’est exactement ce qu’on veut en transfer learning : <strong>réutiliser le backbone</strong>, <strong>réinitialiser</strong> la tête. Le <code>print</code> des deux listes est une sécurité : si <code>missing</code> contenait <code>ds_net.*</code>, ça voudrait dire que le backbone n’a <strong>pas</strong> été chargé → on s’en apercevrait tout de suite.</p>
 <p>▶️ <strong>Démo jouet</strong> : reproduisons le comportement <code>strict=False</code> sur un mini-modèle.</p>
-<div id="20e2d543" class="cell" data-execution_count="1">
+<div id="7f4d34ba" class="cell" data-execution_count="1">
 <div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch, torch.nn <span class="im">as</span> nn</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="co"># 'ckpt' : un checkpoint avec backbone 'feat' + biais de tete</span></span>
@@ -388,7 +388,7 @@ unexpected : []</code></pre>
 [param_groups] backbone=0.00M @ lr=1e-05 | head=0.13M @ lr=0.0001</code></pre>
 <p>→ 13.98 M gelés, 0.13 M entraînés : <strong>moins de 1 %</strong> du modèle bouge.</p>
 <p>▶️ <strong>Démo jouet</strong> : reproduisons (a) la greffe via un wrapper non-Module et (b) le gel par préfixe, pour voir que <code>named_parameters</code> ne liste que le nom greffé.</p>
-<div id="54c4e58a" class="cell" data-execution_count="2">
+<div id="112e7d18" class="cell" data-execution_count="2">
 <div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch.nn <span class="im">as</span> nn</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> NotAModule:                       <span class="co"># &lt;- comme AbstractMILUnit : objet simple</span></span>
@@ -418,7 +418,7 @@ unexpected : []</code></pre>
   head.bias          requires_grad=True</code></pre>
 </div>
 </div>
-<div id="32005fda" class="cell" data-execution_count="3">
+<div id="ffdb8ed0" class="cell" data-execution_count="3">
 <div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Gel par prefixe, exactement comme freeze_backbone :</span></span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>n <span class="op">=</span> <span class="dv">0</span></span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> name, p <span class="kw">in</span> m.named_parameters():</span>
@@ -454,7 +454,7 @@ entraînables restants : ['head.weight', 'head.bias']</code></pre>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> args.freeze_backbone:</span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    set_backbone_eval(model)   <span class="co"># re-fige la BN du backbone APRES train()</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>▶️ <strong>Démo jouet</strong> : observons <code>running_mean</code> dériver en <code>train()</code> puis se figer en <code>eval()</code>.</p>
-<div id="3c7ad78d" class="cell" data-execution_count="4">
+<div id="df75148c" class="cell" data-execution_count="4">
 <div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch, torch.nn <span class="im">as</span> nn</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>bn <span class="op">=</span> nn.BatchNorm1d(<span class="dv">3</span>)</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">'init running_mean :'</span>, bn.running_mean.tolist())</span>
@@ -474,8 +474,8 @@ entraînables restants : ['head.weight', 'head.bias']</code></pre>
 <span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="st">'inchange ?'</span>, torch.allclose(frozen, bn.running_mean))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>init running_mean : [0.0, 0.0, 0.0]
-apres 5 batches train() : [4.127, 4.16, 4.105]
-apres 5 batches eval()  : [4.127, 4.16, 4.105]
+apres 5 batches train() : [4.1, 4.119, 4.082]
+apres 5 batches eval()  : [4.1, 4.119, 4.082]
 inchange ? True</code></pre>
 </div>
 </div>
@@ -543,7 +543,7 @@ inchange ? True</code></pre>
 <li><strong><code>.float()</code> hors autocast.</strong> L’entraînement tourne en mixed-precision (<code>autocast</code> fp16). Or <code>binary_cross_entropy</code> n’est <strong>pas autocast-safe</strong> : on force fp32 en sortant du contexte autocast, sinon NaN/instabilités.</li>
 </ol>
 <p>▶️ <strong>Démo jouet</strong> : la double-sigmoïde, illustrée.</p>
-<div id="5d62619c" class="cell" data-execution_count="5">
+<div id="19b0b97a" class="cell" data-execution_count="5">
 <div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> torch, torch.nn.functional <span class="im">as</span> F</span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>proba <span class="op">=</span> torch.tensor([<span class="fl">0.99</span>, <span class="fl">0.01</span>])     <span class="co"># sortie DEJA en proba (apres sigmoid)</span></span>
 <span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>target <span class="op">=</span> torch.tensor([<span class="fl">1.0</span>, <span class="fl">0.0</span>])</span>

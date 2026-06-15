@@ -257,15 +257,9 @@ def make_loaders(pkl_path, image_dir, batch_size=4, num_workers=8,
 
     # --- config optimale (sweep _gmic_sweep.py) : images en uint8 -> normalisation
     #     sur GPU cote train -> RAM bornee meme avec pin_memory + prefetch 2
-    # En 16 bits (int16 = 2x les octets de l'uint8) l'empreinte RAM double ;
-    # sur cette VM (94 Go SANS swap) ca part en reclaim/compaction (88% sys,
-    # GPU affame, blocage de fait). Chemin FRUGAL en 16 bits : pas de
-    # pin_memory (page-locked = non reclaimable) + prefetch 1. Le 8 bits garde
-    # le chemin rapide du sweep (pin + prefetch 2). N'affecte PAS les resultats.
-    frugal = train_ds.bit16
-    loader_kw = dict(num_workers=num_workers, pin_memory=not frugal)
+    loader_kw = dict(num_workers=num_workers, pin_memory=True)
     if num_workers > 0:
-        loader_kw.update(prefetch_factor=(1 if frugal else 2), persistent_workers=False)
+        loader_kw.update(prefetch_factor=2, persistent_workers=False)
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, sampler=_make_sampler(train_samples),
         drop_last=True, **loader_kw,
